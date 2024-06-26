@@ -55,7 +55,7 @@ int main(int argc, char* argv[]) {
     // Leggere la risposta dal server
     // La funzione read legge i dati dal socket nel buffer
     read(sock, buffer, BUFFER_SIZE);
-    printf("Risposta dal server: %s\n", buffer);
+    printf("Risposta dal server: \n%s\n", buffer);
 
     // Chiudere il socket per liberare le risorse
     close(sock);

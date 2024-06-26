@@ -11,8 +11,9 @@ int main() {
     int server_fd, new_socket;
     struct sockaddr_in address;
     int addrlen = sizeof(address);
-    char buffer[BUFFER_SIZE] = {0};
-
+    char bufferIn[BUFFER_SIZE];
+    char bufferOut[BUFFER_SIZE];
+    //strcat(path, "/home/matteo/Documents/SO2/projectMyFileTransferApp");
     // Creare socket file descriptor
     // Questo socket è utilizzato per ascoltare
     // AF_INET: IPv4, SOCK_STREAM: TCP, 0: selezione automatica del protocollo (TCP)
@@ -57,12 +58,43 @@ int main() {
         printf("Connessione accettata\n");
 
         // Leggere il messaggio dal client
-        int valread = read(new_socket, buffer, BUFFER_SIZE);
-        printf("Messaggio ricevuto: %s\n", buffer);
+        int valread = read(new_socket, bufferIn, BUFFER_SIZE);
+        if(strncmp(bufferIn, "ls", 2) == 0) {
+            // se il comando è ls, allora eseguilo sulla cartella riservata
+            // all'utente sul server e mandagli in ritorno il risultato
 
+
+            //printf("comando_ls");
+            // Esegui il comando ls
+
+            if (chdir("/home/matteo/Documents/SO2/projectMyFileTransferApp/ServerRootFolder") != 0) {
+                perror("chdir failed");
+                // Gestione dell'errore se il cambio di directory fallisce
+            }
+
+            FILE *fp = popen("ls", "r");
+            if (fp == NULL) {
+                perror("popen");
+                close(new_socket);
+                continue;
+            }
+
+            // Leggi il risultato del comando
+            while (fgets(bufferOut, sizeof(bufferOut), fp) != NULL) {
+                // Manda il risultato al client
+                send(new_socket, bufferOut, strlen(bufferOut), 0);
+            }
+
+
+            pclose(fp);
+
+        } else {
+            //altrimenti fai l'echo del comando
+            printf("Messaggio ricevuto: %s\n", bufferIn);
+            send(new_socket, bufferIn, valread, 0);
+            printf("Messaggio mandato indietro al client\n");
+        }
         // Inviare il messaggio ricevuto al client (echo)
-        send(new_socket, buffer, valread, 0);
-        printf("Messaggio mandato indietro al client\n");
 
         // Chiudere la connessione con il client
         close(new_socket);
