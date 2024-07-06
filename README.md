@@ -1,4 +1,4 @@
-Per compilare il server e il client usare: (sostituire con gli adeguati path)
+Per compilare il server e il client usare: (sostituire con gli adeguati path) <br\>
 Server: 'gcc -Wall -o /path/to/executable/myFTserver /path/to/project/myFTserver.c -lpthread'
 Client: 'gcc -Wall -o /path/to/executable/myFTclient /path/to/project/myFTclient.c'
 
