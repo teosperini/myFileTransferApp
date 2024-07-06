@@ -10,6 +10,11 @@
 #include <netinet/in.h>
 #include <pthread.h>
 
+#include <signal.h>
+
+int server_socket; // dichiarare globalmente il server socket
+
+
 // Funzione per stampare l'uso del programma
 void print_usage(const char *prog_name) {
     fprintf(stderr, "Uso: %s -d <directory> -a <indirizzo IP> -p <numero di porta> [-h]\n", prog_name);
@@ -65,6 +70,7 @@ int handle_ls_request(int new_socket) {
     return 0;
 }
 
+
 // Funzione per gestire la comunicazione con il client
 void *handle_client(void *arg) {
     int client_socket = *(int *)arg;
@@ -89,6 +95,13 @@ void *handle_client(void *arg) {
 
     return NULL;
 }
+
+void handle_sigint(int sig) {
+    printf("Interruzione ricevuta. Chiudendo il socket...\n");
+    close(server_socket);
+    exit(0);
+}
+
 
 int main(int argc, char *argv[]) {
     char *directory = NULL;
@@ -168,7 +181,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Creazione del socket per il server
-    int server_socket;
+    //int server_socket;
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_len;
 
@@ -177,6 +190,15 @@ int main(int argc, char *argv[]) {
         perror("Errore nella creazione del socket");
         return 1;
     }
+
+    // Imposta l'opzione SO_REUSEADDR per riutilizzare l'indirizzo subito dopo la chiusura
+    opt = 1;
+    if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
+        perror("Errore nella impostazione di SO_REUSEADDR");
+        close(server_socket);
+        return 1;
+    }
+
 
     // Prepara l'indirizzo del server
     memset(&server_addr, 0, sizeof(server_addr));
