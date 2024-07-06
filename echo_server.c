@@ -8,11 +8,14 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <pthread.h>
 
+// Funzione per stampare l'uso del programma
 void print_usage(const char *prog_name) {
     fprintf(stderr, "Uso: %s -d <directory> -a <indirizzo IP> -p <numero di porta> [-h]\n", prog_name);
 }
 
+// Funzione per creare una directory
 int create_directory(const char *directory) {
     // Controlla se la cartella esiste
     if (access(directory, F_OK) == 0) {
@@ -30,18 +33,19 @@ int create_directory(const char *directory) {
     }
 }
 
+// Funzione per verificare se un indirizzo IP è valido
 int is_valid_ip(const char *ip) {
     struct sockaddr_in sa;
     return inet_pton(AF_INET, ip, &(sa.sin_addr)) != 0;
 }
 
+// Funzione per verificare se un numero di porta è valido
 int is_valid_port(const char *port_str) {
     int port = atoi(port_str);
     return port > 0 && port <= 65535;
 }
 
-
-// gestisci la richiesta di list della cartella server
+// Funzione per gestire la richiesta di lista della cartella server
 int handle_ls_request(int new_socket) {
     char bufferOut[1024];
 
@@ -61,8 +65,11 @@ int handle_ls_request(int new_socket) {
     return 0;
 }
 
-// gestisce la comunicazione con il client
-void handle_client(int client_socket) {
+// Funzione per gestire la comunicazione con il client
+void *handle_client(void *arg) {
+    int client_socket = *(int *)arg;
+    free(arg);
+
     char buffer[1024];
     ssize_t bytes_read;
 
@@ -73,14 +80,15 @@ void handle_client(int client_socket) {
         printf("Messaggio ricevuto dal client: %s\n", buffer);
     }
 
-    if(strncmp(buffer, "ls", 2) == 0) {
+    if (strncmp(buffer, "ls", 2) == 0) {
         handle_ls_request(client_socket);
     }
 
     // Chiudi il socket del client
     close(client_socket);
-}
 
+    return NULL;
+}
 
 int main(int argc, char *argv[]) {
     char *directory = NULL;
@@ -160,7 +168,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Creazione del socket per il server
-    int server_socket, client_socket;
+    int server_socket;
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_len;
 
@@ -195,14 +203,23 @@ int main(int argc, char *argv[]) {
     // Accetta le connessioni in entrata
     while (1) {
         client_len = sizeof(client_addr);
-        if ((client_socket = accept(server_socket, (struct sockaddr *) &client_addr, &client_len)) == -1) {
+        int *client_socket = malloc(sizeof(int));
+        if ((*client_socket = accept(server_socket, (struct sockaddr *) &client_addr, &client_len)) == -1) {
             perror("Errore nell'accettazione della connessione");
             close(server_socket);
             return 1;
         }
 
-        // Gestisce la connessione del client
-        handle_client(client_socket);
+        // Crea un nuovo thread per gestire la connessione del client
+        pthread_t thread_id;
+        if (pthread_create(&thread_id, NULL, handle_client, client_socket) != 0) {
+            perror("Errore nella creazione del thread");
+            close(*client_socket);
+            free(client_socket);
+        } else {
+            // Detach il thread per evitare memory leak
+            pthread_detach(thread_id);
+        }
     }
 
     // Chiude il socket del server (questo codice non sarà mai raggiunto)
