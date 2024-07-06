@@ -17,7 +17,7 @@ int server_socket; // dichiarare globalmente il server socket
 
 // Funzione per stampare l'uso del programma
 void print_usage(const char *prog_name) {
-    fprintf(stderr, "Uso: %s -d <directory> -a <indirizzo IP> -p <numero di porta> [-h]\n", prog_name);
+    fprintf(stderr, "usage: %s -a <IP address> -p <port number> -d <directory> [-h]\n", prog_name);
 }
 
 // Funzione per creare una directory
@@ -98,6 +98,7 @@ void *handle_client(void *arg) {
 
 void handle_sigint(int sig) {
     printf("Interruzione ricevuta. Chiudendo il socket...\n");
+
     close(server_socket);
     exit(0);
 }
