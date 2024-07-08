@@ -9,51 +9,120 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <stdbool.h>
+#include <linux/limits.h>
 
-#include <signal.h>
+#define BUFFER_SIZE 1024
+
 
 int server_socket; // dichiarare globalmente il server socket
 
-
-// Funzione per stampare l'uso del programma
 void print_usage(const char *prog_name) {
-    fprintf(stderr, "usage: %s -a <IP address> -p <port number> -d <directory> [-h]\n", prog_name);
+    fprintf(stderr, "Uso: %s -d <directory> -a <indirizzo IP> -p <numero di porta> [-h]\n", prog_name);
 }
 
-// Funzione per creare una directory
-int create_directory(const char *directory) {
-    // Controlla se la cartella esiste
-    if (access(directory, F_OK) == 0) {
-        printf("La cartella '%s' esiste già.\n", directory);
-        return 0;
-    } else {
-        // La cartella non esiste, creala con permessi 0777
-        if (mkdir(directory, 0777) == 0) {
-            printf("La cartella '%s' è stata creata.\n", directory);
-            return 0;
-        } else {
-            perror("Errore nella creazione della cartella");
-            return 1;
-        }
+// UTILITY
+void print_string_ascii(const char *str) {
+    int i = 0;
+    while (str[i] != '\0') {
+        printf("Carattere: %c, Codice ASCII: %d\n", str[i], str[i]);
+        i++;
     }
 }
 
-// Funzione per verificare se un indirizzo IP è valido
+void remove_crlf(char *str) {
+    int i, j = 0;
+    int len = strlen(str);
+
+    for (i = 0; i < len; i++) {
+        if (str[i] != '\r' && str[i] != '\n') {
+            str[j++] = str[i];
+        }
+    }
+
+    str[j] = '\0'; // Termina la stringa con il carattere null
+}
+
+// UTILITY END
+
+int create_directories(const char *path, bool server_folder) {
+    char tmp[256];
+    char *p = NULL;
+    size_t len;
+
+    // Copia il percorso in una variabile temporanea
+    snprintf(tmp, sizeof(tmp), "%s", path);
+    len = strlen(tmp);
+
+    if(server_folder) {
+        if (tmp[len - 1] == '/') {
+            tmp[len - 1] = 0;
+        }
+
+        // Crea le directory necessarie lungo il percorso
+        for (p = tmp + 1; *p; p++) {
+            if (*p == '/') {
+                *p = 0;
+                // Crea la directory intermedia se non esiste
+                if (access(tmp, F_OK) != 0) {
+                    if (mkdir(tmp, 0777) != 0) {
+                        perror("Errore nella creazione della cartella");
+                        return 1;
+                    }
+                }
+                *p = '/';
+            }
+        }
+
+        // Crea la directory finale
+        if (access(tmp, F_OK) != 0) {
+            if (mkdir(tmp, 0777) != 0) {
+                perror("Errore nella creazione della cartella");
+                return 1;
+            }
+        }
+
+        printf("La cartella '%s' è stata creata.\n", path);
+        return 0;
+    }
+    // Trova l'ultimo '/' per escludere il nome del file
+    for (p = tmp + len - 1; p >= tmp; p--) {
+        if (*p == '/') {
+            *p = '\0';
+            break;
+        }
+    }
+
+    // Crea le directory
+    for (p = tmp + 1; *p; p++) {
+        if (*p == '/') {
+            *p = 0;
+            mkdir(tmp, S_IRWXU);
+            *p = '/';
+        }
+    }
+    mkdir(tmp, S_IRWXU);
+    return 0;
+}
+
+
+
 int is_valid_ip(const char *ip) {
     struct sockaddr_in sa;
     return inet_pton(AF_INET, ip, &(sa.sin_addr)) != 0;
 }
 
-// Funzione per verificare se un numero di porta è valido
 int is_valid_port(const char *port_str) {
     int port = atoi(port_str);
     return port > 0 && port <= 65535;
 }
 
-// Funzione per gestire la richiesta di lista della cartella server
-int handle_ls_request(int new_socket) {
-    char bufferOut[1024];
 
+// gestisci la richiesta di list della cartella server
+//int handle_ls(int new_socket, char* path) {
+int handle_ls(int new_socket) {
+    char bufferOut[BUFFER_SIZE];
+    //TODO inserire cartella
     FILE *fp = popen("ls", "r");
     if (fp == NULL) {
         perror("popen");
@@ -71,34 +140,126 @@ int handle_ls_request(int new_socket) {
 }
 
 
-// Funzione per gestire la comunicazione con il client
-void *handle_client(void *arg) {
-    int client_socket = *(int *)arg;
+bool is_subdirectory(const char *parent, const char *sub) {
+    size_t len = strlen(parent);
+    return strncmp(parent, sub, len) == 0 && (sub[len] == '/' || sub[len] == '\0');
+}
+
+int handle_get(int client_socket, char *filename) {
+    char cwd[PATH_MAX];
+    char resolved_path[PATH_MAX];
+
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        printf("Current working directory: %s\n", cwd);
+    } else {
+        perror("getcwd() error");
+        send(client_socket, "SERVER_ERROR\n", 13, 0);
+        return 1;
+    }
+
+    printf("apro il file: '%s'\n", filename);
+    printf("filename length: %zu\n", strlen(filename));
+    remove_crlf(filename);
+
+    // Risolvi il path assoluto del file richiesto
+    if (realpath(filename, resolved_path) == NULL) {
+        perror("realpath");
+        send(client_socket, "FILE_NOT_FOUND\n", 15, 0);
+        return 1;
+    }
+    printf("%s", resolved_path);
+    // Controlla    se il path risolto è sotto la CWD
+    if (!is_subdirectory(cwd, resolved_path)) {
+        fprintf(stderr, "Access denied: '%s' is outside the server directory\n", resolved_path);
+        send(client_socket, "ACCESS_DENIED\n", 14, 0);
+        return 1;
+    }
+
+    FILE *fp = fopen(resolved_path, "r");
+    if (fp == NULL) {
+        perror("fopen");
+        send(client_socket, "FILE_NOT_FOUND\n", 15, 0);
+        return 1;
+    }
+
+    char buffer_out[BUFFER_SIZE];
+    size_t bytes_read;
+    while ((bytes_read = fread(buffer_out, 1, sizeof(buffer_out), fp))> 0){
+        if(send(client_socket, buffer_out, bytes_read, 0) == -1) {
+            perror("Errore nell'invio dei dati");
+            fclose(fp);
+            close(client_socket);
+            return 1;
+        }
+    }
+    fclose(fp);
+    return 0;
+}
+
+
+int handle_put(int client_socket, char* filename) {
+    remove_crlf(filename);
+    create_directories(filename, false);
+
+    FILE *fp = fopen(filename, "wb");
+    if (fp == NULL) {
+        perror("Errore nell'apertura del file sul server in scrittura");
+        close(client_socket);
+        return 1;
+    }
+
+    send(client_socket, "ACK", 3, 0);
+
+    char buffer_in[BUFFER_SIZE];
+    ssize_t bytes_received;
+    // Continua a ricevere i dati rimanenti, se ce ne sono
+    while ((bytes_received = recv(client_socket, buffer_in, sizeof(buffer_in), 0)) > 0) {
+        fwrite(buffer_in, 1, bytes_received, fp);
+    }
+
+    fclose(fp);
+    return 0;
+}
+
+
+// gestisce la comunicazione con il client
+void handle_client(int client_socket) {
+    char buffer_in[BUFFER_SIZE];
+    // legge il messaggio inviato dal client
+    ssize_t bytes_read = read(client_socket, buffer_in, sizeof(buffer_in));
+    if (bytes_read > 0) {
+        buffer_in[bytes_read] = '\0';
+        printf("Messaggio ricevuto dal client: %s\n", buffer_in);
+    }
+
+    if(strncmp(buffer_in, "LST ", 4) == 0) {
+        char* filename = buffer_in + 4;
+        handle_ls(client_socket);
+    } else if (strncmp(buffer_in, "GET ", 4) == 0) {
+        char* filename = buffer_in + 4;
+        handle_get(client_socket, filename);
+    } else if (strncmp(buffer_in, "PUT ", 4) == 0) {
+        char* filename = buffer_in + 4; // Il nome del file inizia dopo il comando "PUT "
+        handle_put(client_socket, filename);
+    }
+
+    // chiudi il socket
+    close(client_socket);
+}
+
+void *client_thread(void *arg) {
+    // copio il socket in una variabile locale alla funzione
+    int client_socket = *((int *)arg);
+
+    // libero la memoria che era stata riservata al puntatore
     free(arg);
 
-    char buffer[1024];
-    ssize_t bytes_read;
-
-    // leggiamo il messaggio inviato dal client
-    bytes_read = read(client_socket, buffer, sizeof(buffer));
-    if (bytes_read > 0) {
-        buffer[bytes_read] = '\0';
-        printf("Messaggio ricevuto dal client: %s\n", buffer);
-    }
-
-    if (strncmp(buffer, "ls", 2) == 0) {
-        handle_ls_request(client_socket);
-    }
-
-    // Chiudi il socket del client
-    close(client_socket);
-
+    handle_client(client_socket);
     return NULL;
 }
 
-void handle_sigint(int sig) {
+void handle_sigint(int sig){
     printf("Interruzione ricevuta. Chiudendo il socket...\n");
-
     close(server_socket);
     exit(0);
 }
@@ -169,7 +330,7 @@ int main(int argc, char *argv[]) {
     printf("Numero di porta specificato: %s\n", port_str);
 
     // Controlla e crea la cartella
-    if (create_directory(directory) != 0) {
+    if (create_directories(directory, true) != 0) {
         fprintf(stderr, "Errore nella creazione della cartella.\n");
         return 1;
     }
@@ -181,25 +342,13 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Creazione del socket per il server
-    //int server_socket;
     struct sockaddr_in server_addr, client_addr;
-    socklen_t client_len;
 
     // Crea il server socket TCP
     if ((server_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("Errore nella creazione del socket");
         return 1;
     }
-
-    // Imposta l'opzione SO_REUSEADDR per riutilizzare l'indirizzo subito dopo la chiusura
-    opt = 1;
-    if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
-        perror("Errore nella impostazione di SO_REUSEADDR");
-        close(server_socket);
-        return 1;
-    }
-
 
     // Prepara l'indirizzo del server
     memset(&server_addr, 0, sizeof(server_addr));
@@ -221,28 +370,33 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    // Imposta l'opzione SO_REUSEADDR per riutilizzare l'indirizzo subito dopo la chiusura
+    int option = 1;
+    if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option)) == -1) {
+        perror("Errore nella impostazione di SO_REUSEADDR");
+        close(server_socket);
+        return 1;
+    }
+
     printf("Server in ascolto su %s:%s\n", ip_address, port_str);
 
     // Accetta le connessioni in entrata
     while (1) {
-        client_len = sizeof(client_addr);
+        socklen_t client_len = sizeof(client_addr);
+        // Il client socket verrà gestito da un thread; la memoria per andare a scrivere questo socket
+        // sarà "di proprietà" del thread e dobbiamo allocarla dinamicamente
         int *client_socket = malloc(sizeof(int));
+
         if ((*client_socket = accept(server_socket, (struct sockaddr *) &client_addr, &client_len)) == -1) {
             perror("Errore nell'accettazione della connessione");
             close(server_socket);
             return 1;
         }
 
-        // Crea un nuovo thread per gestire la connessione del client
-        pthread_t thread_id;
-        if (pthread_create(&thread_id, NULL, handle_client, client_socket) != 0) {
-            perror("Errore nella creazione del thread");
-            close(*client_socket);
-            free(client_socket);
-        } else {
-            // Detach il thread per evitare memory leak
-            pthread_detach(thread_id);
-        }
+        // thread che gestisce la connessione del client: vuole una funzione con un unico argomento puntatore generico (void*) che accetta un unico parametro puntatore generico (void*)
+        pthread_t tid;
+        pthread_create(&tid, NULL, client_thread, client_socket);
+        pthread_detach(tid);
     }
 
     // Chiude il socket del server (questo codice non sarà mai raggiunto)
