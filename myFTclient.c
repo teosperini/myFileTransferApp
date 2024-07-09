@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <linux/limits.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -29,6 +30,9 @@ int is_valid_port(const char *port_str) {
 }
 
 void create_directories(const char *path) {
+    if (strchr(path, '/') == NULL) {
+        return;
+    }
     char tmp[256];
     char *p = NULL;
     size_t len;
@@ -65,8 +69,8 @@ int main(int argc, char *argv[]) {
     int type_l = 0;
     char *server_ip = NULL;
     char *port_str = NULL;
-    char *f_file = NULL;
-    char *o_file = NULL;
+    char *f_path = NULL;
+    char *o_path = NULL;
     int local_file_allocated = 0;
     int opt;
 
@@ -84,22 +88,22 @@ int main(int argc, char *argv[]) {
             break;
             case 'a':
                 server_ip = optarg;
-                break;
+            break;
             case 'p':
                 port_str = optarg;
-                break;
+            break;
             case 'f':
-                f_file = optarg;
-                break;
+                f_path = optarg;
+            break;
             case 'o':
-                o_file = optarg;
-                break;
+                o_path = optarg;
+            break;
             case 'h':
                 print_usage(argv[0]);
-                return 0;
+            return 0;
             default:
                 print_usage(argv[0]);
-                return 1;
+            return 1;
         }
     }
 
@@ -116,7 +120,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Verifica che tutte le opzioni necessarie siano state fornite
-    if (server_ip == NULL || port_str == NULL || (f_file == NULL && type_l == 0)) {
+    if (server_ip == NULL || port_str == NULL || (f_path == NULL && type_l == 0)) {
         fprintf(stderr, "Tutte le opzioni -a, -p, -f sono obbligatorie\n");
         print_usage(argv[0]);
         return 1;
@@ -137,13 +141,13 @@ int main(int argc, char *argv[]) {
     int port = atoi(port_str);
 
     // Se local_file è NULL, allocare memoria e copiare il nome del remote_file
-    if (o_file == NULL && type_l == 0) {
-        o_file = malloc(strlen(f_file) + 1);
-        if (o_file == NULL) {
+    if (o_path == NULL && type_l == 0) {
+        o_path = malloc(strlen(f_path) + 1);
+        if (o_path == NULL) {
             perror("Errore di allocazione memoria");
             return 1;
         }
-        strcpy(o_file, f_file);
+        strcpy(o_path, f_path);
         local_file_allocated = 1;
     }
 
@@ -169,61 +173,70 @@ int main(int argc, char *argv[]) {
 
     char request[BUFFER_SIZE];
 
-    if (type_r) {  // Operazione di lettura (get)
+    if (type_r) {
+        // Operazione di lettura (get)
         // Invio della richiesta al server
-            snprintf(request, sizeof(request), "GET %s\n", f_file);
+        snprintf(request, sizeof(request), "GET %s\n", f_path);
         if (send(client_socket, request, strlen(request), 0) == -1) {
             perror("Errore nell'invio della richiesta");
             close(client_socket);
             return 1;
         }
 
-        // Creazione delle directory se non esistono
-        create_directories(o_file);
-
         // Ricezione del file dal server
         char buffer[BUFFER_SIZE];
         ssize_t bytes_received = recv(client_socket, buffer, sizeof(buffer), 0);
 
+        //perror("Risultato creazione directory");
+        printf("%s", buffer);
         // Verifica della risposta del server
         if (bytes_received <= 0) {
-            perror("Errore nella ricezione dei dati");
+            fprintf(stderr, "Errore nella ricezione dei dati nella parte 1 della GET:\nDati mancanti o incorretti\n");
         } else {
-            // Controllo se la risposta indica che il file non è stato trovato
-            if (strncmp(buffer, "ACCESS_DENIED", 13) == 0) {
-                printf("Accesso negato al file %s sul server\n", f_file);
-            } else if (strncmp(buffer, "FILE_NOT_FOUND", 14) == 0) {
-                printf("Il file '%s' non è stato trovato sul server\n", f_file);
-            } else {
-                // Apertura del file locale per la scrittura
-                FILE *fp = fopen(o_file, "wb");
-                if (fp == NULL) {
-                    perror("Errore nell'apertura del file locale scrittura");
-                    close(client_socket);
-                    return 1;
-                }
+            if (strncmp(buffer, "FILE_PATH_NOT_RESOLVED", 22) == 0) {
+                fprintf(stderr, "Il path del file '%s' non è stato risolto correttamente\n",f_path);
+            } else
+                if (strncmp(buffer, "FILE_NOT_FOUND", 14) == 0) {
+                    fprintf(stderr, "Il file '%s' non è stato trovato sul server\n", f_path);
+                } else
+                    if (strncmp(buffer, "ACCESS_DENIED", 13) == 0) {
+                        fprintf(stderr, "Accesso negato al file %s sul server\n", f_path);
+                    } else
+                        if (strncmp(buffer, "SERVER_ERROR", 12) == 0) {
+                            fprintf(stderr, "Errore del server durante la GET\n");
+                        } else {
+                            // Creazione delle directory se non esistono
+                            create_directories(o_path);
+                            // Apertura del file locale per la scrittura
+                            FILE *fp = fopen(o_path, "wb");
+                            if (fp == NULL) {
+                                perror("Errore nell'apertura del file locale scrittura\n");
+                                close(client_socket);
+                                return 1;
+                            }
 
-                // Scrivi i dati ricevuti nel file locale
-                fwrite(buffer, 1, bytes_received, fp);
+                            // Scrivi i dati ricevuti nel file locale
+                            fwrite(buffer, 1, bytes_received, fp);
 
-                // Continua a ricevere i dati rimanenti, se ce ne sono
-                while ((bytes_received = recv(client_socket, buffer, sizeof(buffer), 0)) > 0) {
-                    fwrite(buffer, 1, bytes_received, fp);
-                }
+                            // Continua a ricevere i dati rimanenti, se ce ne sono
+                            while ((bytes_received = recv(client_socket, buffer, sizeof(buffer), 0)) > 0) {
+                                fwrite(buffer, 1, bytes_received, fp);
+                            }
 
-                if (bytes_received == -1) {
-                    perror("Errore nella ricezione dei dati");
-                } else {
-                    printf("File '%s' scaricato come '%s'\n",  o_file, f_file);
-                }
+                            if (bytes_received == -1) {
+                                perror("Errore nella ricezione dei dati nella parte 2 della GET:\nDati mancanti o incorretti\n");
+                            } else {
+                                printf("File '%s' scaricato come '%s'\n", f_path, o_path);
+                            }
 
-                // Chiusura del file
-                fclose(fp);
-            }
+                            // Chiusura del file
+                            fclose(fp);
+                        }
         }
-    } else if (type_w) {  // Operazione di scrittura (put)
+    } else if (type_w) {
+        // Operazione di scrittura (put)
         // Invio della richiesta al server
-        snprintf(request, sizeof(request), "PUT %s\n", o_file);
+        snprintf(request, sizeof(request), "PUT %s\n", o_path);
         if (send(client_socket, request, strlen(request), 0) == -1) {
             perror("Errore nell'invio della richiesta");
             close(client_socket);
@@ -244,9 +257,9 @@ int main(int argc, char *argv[]) {
         }
 
         // Apertura del file locale per la lettura
-        FILE *fp = fopen(f_file, "rb");
+        FILE *fp = fopen(f_path, "rb");
         if (fp == NULL) {
-            perror("Errore nell'apertura del file locale per la lettura");
+            perror("Errore nell'apertura del file locale per la lettura nella PUT\n");
             close(client_socket);
             return 1;
         }
@@ -256,7 +269,7 @@ int main(int argc, char *argv[]) {
         size_t bytes_read;
         while ((bytes_read = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
             if (send(client_socket, buffer, bytes_read, 0) == -1) {
-                perror("Errore nell'invio dei dati");
+                perror("Errore nell'invio dei dati della PUT\n");
                 fclose(fp);
                 close(client_socket);
                 return 1;
@@ -264,29 +277,30 @@ int main(int argc, char *argv[]) {
         }
 
         if (ferror(fp)) {
-            perror("Errore nella lettura del file");
+            perror("Errore nella lettura del file\n");
         } else {
-            printf("File '%s' inviato come '%s'\n", f_file, o_file);
+            printf("File '%s' correttamente inviato come '%s'\n", f_path, o_path);
         }
 
         // Chiusura del file
         fclose(fp);
-    } else if (type_l) {  // Operazione di lista (list)
+    } else if (type_l) {
+        // Operazione di lista (list)
         // Invio della richiesta al server
         bool f_was_null = false;
-        if (f_file == NULL) {
+        if (f_path == NULL) {
             f_was_null = true;
-            f_file = malloc(sizeof(char*)*250);
-            strcat(f_file, "");
+            f_path = malloc(sizeof(char*)*PATH_MAX);
+            strcat(f_path, "");
         }
-        snprintf(request, sizeof(request), "LST %s\n", f_file);
+        snprintf(request, sizeof(request), "LST %s\n", f_path);
         if (send(client_socket, request, strlen(request), 0) == -1) {
-            perror("Errore nell'invio della richiesta");
+            perror("Errore nell'invio della richiesta LS\n ");
             close(client_socket);
             return 1;
         }
         if (f_was_null) {
-            free(f_file);
+            free(f_path);
         }
 
         // Ricezione della lista dal server
@@ -298,7 +312,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (bytes_received == -1) {
-            perror("Errore nella ricezione dei dati");
+            perror("Errore nella ricezione dei dati della LS");
         }
     }
 
@@ -307,7 +321,7 @@ int main(int argc, char *argv[]) {
 
     // Libera la memoria allocata per local_file se era stata allocata
     if (local_file_allocated) {
-        free(o_file);
+        free(o_path);
     }
 
     return 0;

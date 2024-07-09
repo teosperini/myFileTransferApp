@@ -9,14 +9,12 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdbool.h>
+#include <bits/signum-generic.h>
 #include <linux/limits.h>
-#include <semaphore.h>
 
 #define BUFFER_SIZE 1024
-
-sem_t dir_semaphore;
-
 
 int server_socket; // dichiarare globalmente il server socket
 
@@ -49,7 +47,7 @@ void remove_crlf(char *str) {
 // UTILITY END
 
 int create_directories(const char *path, bool server_folder) {
-    char tmp[256];
+    char tmp[PATH_MAX];
     char *p = NULL;
     size_t len;
 
@@ -88,6 +86,9 @@ int create_directories(const char *path, bool server_folder) {
         printf("La cartella '%s' è stata creata.\n", path);
         return 0;
     }
+    if (strchr(path, '/') == NULL) {
+        return 0;
+    }
     // Trova l'ultimo '/' per escludere il nome del file
     for (p = tmp + len - 1; p >= tmp; p--) {
         if (*p == '/') {
@@ -123,15 +124,11 @@ int is_valid_port(const char *port_str) {
 
 // gestisci la richiesta di list della cartella server
 int handle_ls(int new_socket, char* filename) {
-    // Acquisisce il semaforo
-    sem_wait(&dir_semaphore);
-
     char path[BUFFER_SIZE] = "ls ";
     strncat(path, filename, sizeof(path) - strlen(path) - 1);
     FILE *fp = popen(path, "r");
     if (fp == NULL) {
         perror("popen");
-        sem_post(&dir_semaphore); // Rilascia il semaforo prima di tornare
         return 1;
     }
 
@@ -145,10 +142,6 @@ int handle_ls(int new_socket, char* filename) {
     printf(" ls inviato correttamente\n");
 
     pclose(fp);
-
-    // Rilascia il semaforo
-    sem_post(&dir_semaphore);
-
     return 0;
 }
 
@@ -160,9 +153,6 @@ bool is_subdirectory(const char *parent, const char *sub) {
 }
 
 int handle_get(int client_socket, char *filename) {
-    // Acquisisce il semaforo
-    sem_wait(&dir_semaphore);
-
     char cwd[PATH_MAX];
     char resolved_path[PATH_MAX];
 
@@ -171,7 +161,6 @@ int handle_get(int client_socket, char *filename) {
     } else {
         perror("getcwd() error");
         send(client_socket, "SERVER_ERROR\n", 13, 0);
-        sem_post(&dir_semaphore); // Rilascia il semaforo prima di tornare
         return 1;
     }
 
@@ -182,8 +171,7 @@ int handle_get(int client_socket, char *filename) {
     // Risolvi il path assoluto del file richiesto
     if (realpath(filename, resolved_path) == NULL) {
         perror("realpath");
-        send(client_socket, "FILE_NOT_FOUND\n", 15, 0);
-        sem_post(&dir_semaphore); // Rilascia il semaforo prima di tornare
+        send(client_socket, "FILE_PATH_NOT_RESOLVED\n", 23, 0);
         return 1;
     }
 
@@ -193,7 +181,6 @@ int handle_get(int client_socket, char *filename) {
     if (!is_subdirectory(cwd, resolved_path)) {
         fprintf(stderr, "Access denied: '%s' is outside the server directory\n", resolved_path);
         send(client_socket, "ACCESS_DENIED\n", 14, 0);
-        sem_post(&dir_semaphore); // Rilascia il semaforo prima di tornare
         return 1;
     }
 
@@ -201,7 +188,6 @@ int handle_get(int client_socket, char *filename) {
     if (fp == NULL) {
         perror("fopen");
         send(client_socket, "FILE_NOT_FOUND\n", 15, 0);
-        sem_post(&dir_semaphore); // Rilascia il semaforo prima di tornare
         return 1;
     }
 
@@ -212,24 +198,16 @@ int handle_get(int client_socket, char *filename) {
             perror("Errore nell'invio dei dati");
             fclose(fp);
             close(client_socket);
-            sem_post(&dir_semaphore); // Rilascia il semaforo prima di tornare
             return 1;
         }
     }
 
     fclose(fp);
-
-    // Rilascia il semaforo
-    sem_post(&dir_semaphore);
-
     return 0;
 }
 
 
 int handle_put(int client_socket, char* filename) {
-    // Acquisisce il semaforo
-    sem_wait(&dir_semaphore);
-
     remove_crlf(filename);
     create_directories(filename, false);
 
@@ -237,7 +215,6 @@ int handle_put(int client_socket, char* filename) {
     if (fp == NULL) {
         perror("Errore nell'apertura del file sul server in scrittura");
         close(client_socket);
-        sem_post(&dir_semaphore); // Rilascia il semaforo prima di tornare
         return 1;
     }
 
@@ -251,10 +228,6 @@ int handle_put(int client_socket, char* filename) {
     }
 
     fclose(fp);
-
-    // Rilascia il semaforo
-    sem_post(&dir_semaphore);
-
     return 0;
 }
 
@@ -268,17 +241,17 @@ void handle_client(int client_socket) {
         buffer_in[bytes_read] = '\0';
         printf("Messaggio ricevuto dal client: %s\n", buffer_in);
     }
+    char* command = buffer_in;
+    char* filename = buffer_in+4;
 
-    if (strncmp(buffer_in, "LST ", 4) == 0) {
-        char* filename = buffer_in + 4;
+    if (strncmp(command, "LST ", 4) == 0) {
         handle_ls(client_socket, filename);
-    } else if (strncmp(buffer_in, "GET ", 4) == 0) {
-        char* filename = buffer_in + 4;
+    } else if (strncmp(command, "GET ", 4) == 0) {
         handle_get(client_socket, filename);
-    } else if (strncmp(buffer_in, "PUT ", 4) == 0) {
-        char* filename = buffer_in + 4; // Il nome del file inizia dopo il comando "PUT "
+    } else if (strncmp(command, "PUT ", 4) == 0) {
         handle_put(client_socket, filename);
     }
+    //printf("FILE: %s\n", filename);
 
     // chiudi il socket
     close(client_socket);
@@ -298,8 +271,10 @@ void *client_thread(void *arg) {
 
 void handle_sigint(int sig) {
     printf("Interruzione ricevuta. Chiudendo il socket...\n");
+    if (shutdown(server_socket, SHUT_RDWR) == -1) {
+        perror("Errore nella chiusura del socket con shutdown");
+    }
     close(server_socket);
-    sem_destroy(&dir_semaphore); // Distrugge il semaforo
     exit(0);
 }
 
@@ -396,20 +371,6 @@ int main(int argc, char *argv[]) {
     server_addr.sin_addr.s_addr = inet_addr(ip_address);
     server_addr.sin_port = htons(atoi(port_str));
 
-    // Associa l'indirizzo e la porta al server socket
-    if (bind(server_socket, (struct sockaddr *) &server_addr, sizeof(server_addr)) == -1) {
-        perror("Errore nell'associazione dell'indirizzo e porta al socket");
-        close(server_socket);
-        return 1;
-    }
-
-    // Mette il socket in ascolto; impostiamo il no di pending connection a 5
-    if (listen(server_socket, 5) == -1) {
-        perror("Errore nella messa in ascolto del socket");
-        close(server_socket);
-        return 1;
-    }
-
     // Imposta l'opzione SO_REUSEADDR per riutilizzare l'indirizzo subito dopo la chiusura
     int option = 1;
     if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option)) == -1) {
@@ -418,13 +379,24 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    printf("Server in ascolto su %s:%s\n", ip_address, port_str);
-
-    // Inizializza il semaforo
-    if (sem_init(&dir_semaphore, 0, 1) != 0) {
-        perror("Errore nell'inizializzazione del semaforo");
+    // Associa l'indirizzo e la porta al server socket
+    if (bind(server_socket, (struct sockaddr *) &server_addr, sizeof(server_addr)) == -1) {
+        perror("Errore nell'associazione dell'indirizzo e porta al socket");
+        close(server_socket);
         return 1;
     }
+
+
+    // Mette il socket in ascolto; impostiamo il no di pending connection a 5
+    if (listen(server_socket, 5) == -1) {
+        perror("Errore nella messa in ascolto del socket");
+        close(server_socket);
+        return 1;
+    }
+
+    printf("Server in ascolto su %s:%s\n", ip_address, port_str);
+
+    signal(SIGINT, handle_sigint);
 
     // Accetta le connessioni in entrata
     while (1) {
