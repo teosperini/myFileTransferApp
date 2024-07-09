@@ -180,10 +180,10 @@ int main(int argc, char *argv[]) {
 
         // Creazione delle directory se non esistono
         create_directories(o_file);
-
         // Ricezione del file dal server
         char buffer[BUFFER_SIZE];
         ssize_t bytes_received = recv(client_socket, buffer, sizeof(buffer), 0);
+        printf("il client ha ricevuto  \n");
 
         // Verifica della risposta del server
         if (bytes_received <= 0) {
@@ -214,7 +214,7 @@ int main(int argc, char *argv[]) {
                 if (bytes_received == -1) {
                     perror("Errore nella ricezione dei dati");
                 } else {
-                    printf("File '%s' scaricato come '%s'\n",  o_file, f_file);
+                    printf("File '%s' scaricato come '%s'\n", o_file, f_file);
                 }
 
                 // Chiusura del file
