@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -115,7 +116,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Verifica che tutte le opzioni necessarie siano state fornite
-    if (server_ip == NULL || port_str == NULL || f_file == NULL) {
+    if (server_ip == NULL || port_str == NULL || (f_file == NULL && type_l == 0)) {
         fprintf(stderr, "Tutte le opzioni -a, -p, -f sono obbligatorie\n");
         print_usage(argv[0]);
         return 1;
@@ -136,7 +137,7 @@ int main(int argc, char *argv[]) {
     int port = atoi(port_str);
 
     // Se local_file è NULL, allocare memoria e copiare il nome del remote_file
-    if (o_file == NULL) {
+    if (o_file == NULL && type_l == 0) {
         o_file = malloc(strlen(f_file) + 1);
         if (o_file == NULL) {
             perror("Errore di allocazione memoria");
@@ -272,11 +273,20 @@ int main(int argc, char *argv[]) {
         fclose(fp);
     } else if (type_l) {  // Operazione di lista (list)
         // Invio della richiesta al server
-        snprintf(request, sizeof(request), "list %s\n", f_file);
+        bool f_was_null = false;
+        if (f_file == NULL) {
+            f_was_null = true;
+            f_file = malloc(sizeof(char*)*250);
+            strcat(f_file, "");
+        }
+        snprintf(request, sizeof(request), "LST %s\n", f_file);
         if (send(client_socket, request, strlen(request), 0) == -1) {
             perror("Errore nell'invio della richiesta");
             close(client_socket);
             return 1;
+        }
+        if (f_was_null) {
+            free(f_file);
         }
 
         // Ricezione della lista dal server
@@ -289,8 +299,6 @@ int main(int argc, char *argv[]) {
 
         if (bytes_received == -1) {
             perror("Errore nella ricezione dei dati");
-        } else {
-            printf("Lista di '%s' ricevuta\n", f_file);
         }
     }
 

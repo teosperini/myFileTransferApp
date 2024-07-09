@@ -11,8 +11,11 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <linux/limits.h>
+#include <semaphore.h>
 
 #define BUFFER_SIZE 1024
+
+sem_t dir_semaphore;
 
 
 int server_socket; // dichiarare globalmente il server socket
@@ -119,25 +122,36 @@ int is_valid_port(const char *port_str) {
 
 
 // gestisci la richiesta di list della cartella server
-//int handle_ls(int new_socket, char* path) {
-int handle_ls(int new_socket) {
-    char bufferOut[BUFFER_SIZE];
-    //TODO inserire cartella
-    FILE *fp = popen("ls", "r");
+int handle_ls(int new_socket, char* filename) {
+    // Acquisisce il semaforo
+    sem_wait(&dir_semaphore);
+
+    char path[BUFFER_SIZE] = "ls ";
+    strncat(path, filename, sizeof(path) - strlen(path) - 1);
+    FILE *fp = popen(path, "r");
     if (fp == NULL) {
         perror("popen");
+        sem_post(&dir_semaphore); // Rilascia il semaforo prima di tornare
         return 1;
     }
+
+    char bufferOut[BUFFER_SIZE];
 
     // Leggi il risultato del comando
     while (fgets(bufferOut, sizeof(bufferOut), fp) != NULL) {
         // Manda il risultato al client
         send(new_socket, bufferOut, strlen(bufferOut), 0);
     }
+    printf(" ls inviato correttamente\n");
 
     pclose(fp);
+
+    // Rilascia il semaforo
+    sem_post(&dir_semaphore);
+
     return 0;
 }
+
 
 
 bool is_subdirectory(const char *parent, const char *sub) {
@@ -146,6 +160,9 @@ bool is_subdirectory(const char *parent, const char *sub) {
 }
 
 int handle_get(int client_socket, char *filename) {
+    // Acquisisce il semaforo
+    sem_wait(&dir_semaphore);
+
     char cwd[PATH_MAX];
     char resolved_path[PATH_MAX];
 
@@ -154,6 +171,7 @@ int handle_get(int client_socket, char *filename) {
     } else {
         perror("getcwd() error");
         send(client_socket, "SERVER_ERROR\n", 13, 0);
+        sem_post(&dir_semaphore); // Rilascia il semaforo prima di tornare
         return 1;
     }
 
@@ -165,13 +183,17 @@ int handle_get(int client_socket, char *filename) {
     if (realpath(filename, resolved_path) == NULL) {
         perror("realpath");
         send(client_socket, "FILE_NOT_FOUND\n", 15, 0);
+        sem_post(&dir_semaphore); // Rilascia il semaforo prima di tornare
         return 1;
     }
+
     printf("%s", resolved_path);
-    // Controlla    se il path risolto è sotto la CWD
+
+    // Controlla se il path risolto è sotto la CWD
     if (!is_subdirectory(cwd, resolved_path)) {
         fprintf(stderr, "Access denied: '%s' is outside the server directory\n", resolved_path);
         send(client_socket, "ACCESS_DENIED\n", 14, 0);
+        sem_post(&dir_semaphore); // Rilascia il semaforo prima di tornare
         return 1;
     }
 
@@ -179,25 +201,35 @@ int handle_get(int client_socket, char *filename) {
     if (fp == NULL) {
         perror("fopen");
         send(client_socket, "FILE_NOT_FOUND\n", 15, 0);
+        sem_post(&dir_semaphore); // Rilascia il semaforo prima di tornare
         return 1;
     }
 
     char buffer_out[BUFFER_SIZE];
     size_t bytes_read;
-    while ((bytes_read = fread(buffer_out, 1, sizeof(buffer_out), fp))> 0){
-        if(send(client_socket, buffer_out, bytes_read, 0) == -1) {
+    while ((bytes_read = fread(buffer_out, 1, sizeof(buffer_out), fp)) > 0) {
+        if (send(client_socket, buffer_out, bytes_read, 0) == -1) {
             perror("Errore nell'invio dei dati");
             fclose(fp);
             close(client_socket);
+            sem_post(&dir_semaphore); // Rilascia il semaforo prima di tornare
             return 1;
         }
     }
+
     fclose(fp);
+
+    // Rilascia il semaforo
+    sem_post(&dir_semaphore);
+
     return 0;
 }
 
 
 int handle_put(int client_socket, char* filename) {
+    // Acquisisce il semaforo
+    sem_wait(&dir_semaphore);
+
     remove_crlf(filename);
     create_directories(filename, false);
 
@@ -205,6 +237,7 @@ int handle_put(int client_socket, char* filename) {
     if (fp == NULL) {
         perror("Errore nell'apertura del file sul server in scrittura");
         close(client_socket);
+        sem_post(&dir_semaphore); // Rilascia il semaforo prima di tornare
         return 1;
     }
 
@@ -218,6 +251,10 @@ int handle_put(int client_socket, char* filename) {
     }
 
     fclose(fp);
+
+    // Rilascia il semaforo
+    sem_post(&dir_semaphore);
+
     return 0;
 }
 
@@ -226,15 +263,15 @@ int handle_put(int client_socket, char* filename) {
 void handle_client(int client_socket) {
     char buffer_in[BUFFER_SIZE];
     // legge il messaggio inviato dal client
-    ssize_t bytes_read = read(client_socket, buffer_in, sizeof(buffer_in));
+    ssize_t bytes_read = read(client_socket, buffer_in, sizeof(buffer_in) - 1);
     if (bytes_read > 0) {
         buffer_in[bytes_read] = '\0';
         printf("Messaggio ricevuto dal client: %s\n", buffer_in);
     }
 
-    if(strncmp(buffer_in, "LST ", 4) == 0) {
+    if (strncmp(buffer_in, "LST ", 4) == 0) {
         char* filename = buffer_in + 4;
-        handle_ls(client_socket);
+        handle_ls(client_socket, filename);
     } else if (strncmp(buffer_in, "GET ", 4) == 0) {
         char* filename = buffer_in + 4;
         handle_get(client_socket, filename);
@@ -247,6 +284,7 @@ void handle_client(int client_socket) {
     close(client_socket);
 }
 
+
 void *client_thread(void *arg) {
     // copio il socket in una variabile locale alla funzione
     int client_socket = *((int *)arg);
@@ -258,11 +296,13 @@ void *client_thread(void *arg) {
     return NULL;
 }
 
-void handle_sigint(int sig){
+void handle_sigint(int sig) {
     printf("Interruzione ricevuta. Chiudendo il socket...\n");
     close(server_socket);
+    sem_destroy(&dir_semaphore); // Distrugge il semaforo
     exit(0);
 }
+
 
 
 int main(int argc, char *argv[]) {
@@ -379,6 +419,12 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Server in ascolto su %s:%s\n", ip_address, port_str);
+
+    // Inizializza il semaforo
+    if (sem_init(&dir_semaphore, 0, 1) != 0) {
+        perror("Errore nell'inizializzazione del semaforo");
+        return 1;
+    }
 
     // Accetta le connessioni in entrata
     while (1) {
