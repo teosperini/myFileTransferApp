@@ -121,11 +121,23 @@ int is_valid_port(const char *port_str) {
     return port > 0 && port <= 65535;
 }
 
+bool check_absolute_path(int client_socket, char* filename) {
+    if (filename[0] == '/') {
+        fprintf(stderr, "Access denied: '%s' is outside the server directory\n", filename);
+        send(client_socket, "ABSOLUTE_PATH_NOT_ALLOWED\n", 26, 0);
+        return false;
+    }
+    return true;
+}
 
-// gestisci la richiesta di list della cartella server
-int handle_ls(int new_socket, char* filename) {
+int handle_ls(int client_socket, char* filename) {
+    if(!check_absolute_path(client_socket, filename)) {
+        return 1;
+    }
     char path[BUFFER_SIZE] = "ls ";
-    strncat(path, filename, sizeof(path) - strlen(path) - 1);
+
+    strcat(path, filename);
+
     FILE *fp = popen(path, "r");
     if (fp == NULL) {
         perror("popen");
@@ -137,7 +149,7 @@ int handle_ls(int new_socket, char* filename) {
     // Leggi il risultato del comando
     while (fgets(bufferOut, sizeof(bufferOut), fp) != NULL) {
         // Manda il risultato al client
-        send(new_socket, bufferOut, strlen(bufferOut), 0);
+        send(client_socket, bufferOut, strlen(bufferOut), 0);
     }
     printf(" ls inviato correttamente\n");
 
@@ -145,46 +157,12 @@ int handle_ls(int new_socket, char* filename) {
     return 0;
 }
 
-
-
-bool is_subdirectory(const char *parent, const char *sub) {
-    size_t len = strlen(parent);
-    return strncmp(parent, sub, len) == 0 && (sub[len] == '/' || sub[len] == '\0');
-}
-
 int handle_get(int client_socket, char *filename) {
-    char cwd[PATH_MAX];
-    char resolved_path[PATH_MAX];
-
-    if (getcwd(cwd, sizeof(cwd)) != NULL) {
-        printf("Current working directory: %s\n", cwd);
-    } else {
-        perror("getcwd() error");
-        send(client_socket, "SERVER_ERROR\n", 13, 0);
+    if(!check_absolute_path(client_socket, filename)) {
         return 1;
     }
 
-    printf("apro il file: '%s'\n", filename);
-    printf("filename length: %zu\n", strlen(filename));
-    remove_crlf(filename);
-
-    // Risolvi il path assoluto del file richiesto
-    if (realpath(filename, resolved_path) == NULL) {
-        perror("realpath");
-        send(client_socket, "FILE_PATH_NOT_RESOLVED\n", 23, 0);
-        return 1;
-    }
-
-    printf("%s", resolved_path);
-
-    // Controlla se il path risolto è sotto la CWD
-    if (!is_subdirectory(cwd, resolved_path)) {
-        fprintf(stderr, "Access denied: '%s' is outside the server directory\n", resolved_path);
-        send(client_socket, "ACCESS_DENIED\n", 14, 0);
-        return 1;
-    }
-
-    FILE *fp = fopen(resolved_path, "r");
+    FILE *fp = fopen(filename, "r");
     if (fp == NULL) {
         perror("fopen");
         send(client_socket, "FILE_NOT_FOUND\n", 15, 0);
@@ -201,14 +179,15 @@ int handle_get(int client_socket, char *filename) {
             return 1;
         }
     }
-
     fclose(fp);
     return 0;
 }
 
-
 int handle_put(int client_socket, char* filename) {
-    remove_crlf(filename);
+    if(!check_absolute_path(client_socket, filename)) {
+        return 1;
+    }
+
     create_directories(filename, false);
 
     FILE *fp = fopen(filename, "wb");
@@ -224,6 +203,7 @@ int handle_put(int client_socket, char* filename) {
     ssize_t bytes_received;
     // Continua a ricevere i dati rimanenti, se ce ne sono
     while ((bytes_received = recv(client_socket, buffer_in, sizeof(buffer_in), 0)) > 0) {
+        printf("'%s'\n",buffer_in);
         fwrite(buffer_in, 1, bytes_received, fp);
     }
 
@@ -233,7 +213,7 @@ int handle_put(int client_socket, char* filename) {
 
 
 // gestisce la comunicazione con il client
-void handle_client(int client_socket) {
+int handle_client(int client_socket) {
     char buffer_in[BUFFER_SIZE];
     // legge il messaggio inviato dal client
     ssize_t bytes_read = read(client_socket, buffer_in, sizeof(buffer_in) - 1);
@@ -243,6 +223,7 @@ void handle_client(int client_socket) {
     }
     char* command = buffer_in;
     char* filename = buffer_in+4;
+    remove_crlf(filename);
 
     if (strncmp(command, "LST ", 4) == 0) {
         handle_ls(client_socket, filename);
@@ -255,6 +236,7 @@ void handle_client(int client_socket) {
 
     // chiudi il socket
     close(client_socket);
+    return 0;
 }
 
 
