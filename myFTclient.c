@@ -236,6 +236,14 @@ int main(int argc, char *argv[]) {
 
         // Operazione di scrittura (put)
         // Invio della richiesta al server
+        // Apertura del file locale per la lettura
+        FILE *fp = fopen(f_path, "rb");
+        if (fp == NULL) {
+            perror("Errore nell'apertura del file locale per la lettura nella PUT\n");
+            close(client_socket);
+            return 1;
+        }
+
         snprintf(request, sizeof(request), "PUT %s\n", o_path);
         if (send(client_socket, request, strlen(request), 0) == -1) {
             perror("Errore nell'invio della richiesta\n");
@@ -270,14 +278,6 @@ int main(int argc, char *argv[]) {
                             }
         } else {
             //printf("Ack ricevuto correttamente\n");
-
-            // Apertura del file locale per la lettura
-            FILE *fp = fopen(f_path, "rb");
-            if (fp == NULL) {
-                perror("Errore nell'apertura del file locale per la lettura nella PUT\n");
-                close(client_socket);
-                return 1;
-            }
 
             // Invio del file al server
             char buffer[BUFFER_SIZE];
