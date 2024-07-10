@@ -1,0 +1,11 @@
+matteo@matteo-VirtualBox:~/client$ myFTclient -l -a 192.168.1.36 -p 8080 -f ".; rm gattino.txt"
+gattino.txt
+strunz
+matteo@matteo-VirtualBox:~/client$ myFTclient -l -a 192.168.1.36 -p 8080
+strunz
+matteo@matteo-VirtualBox:~/client$
+
+
+come si può vedere qui, dato che utilizzo popen, il sistema è vulnerabile ad attacchi, in quanto popen esegue il comando
+
+sto cercando di risolvere il problema

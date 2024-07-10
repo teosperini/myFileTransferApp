@@ -1,0 +1,5 @@
+FILE_NOT_FOUND
+-----------------------------------------------------------------------------------------------
+Senza un ack da parte del server questo file non può essere trasmesso.
+Se però il server mi manda un ack (per confermarmi che non ha errori da trasmettermi) a questo
+punto il client deve inviare un ack per dare il via libera al server alla trasmissione del file.
