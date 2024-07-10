@@ -210,7 +210,7 @@ int main(int argc, char *argv[]) {
         char buffer[BUFFER_SIZE];
         ssize_t bytes_received = recv(client_socket, buffer, sizeof(buffer), 0);
 
-        if (bytes_received <= 0) {
+        if (bytes_received < 0) {
             fprintf(stderr, "Errore nella ricezione dei dati nella parte 1 della GET:\nDati mancanti o incorretti\n");
         } else
             if (strncmp(buffer, "ABSOLUTE_PATH_NOT_ALLOWED", 25) == 0) {
@@ -246,7 +246,7 @@ int main(int argc, char *argv[]) {
                                     fwrite(buffer, 1, bytes_received, fp);
                                 }
 
-                                if (bytes_received == -1) {
+                                if (bytes_received < 0) {
                                     perror("Errore nella ricezione dei dati nella parte 2 della GET:\nDati mancanti o incorretti\n");
                                 } else {
                                     printf("File '%s' scaricato come '%s'\n", f_path, o_path);
@@ -279,7 +279,7 @@ int main(int argc, char *argv[]) {
         ssize_t bytes_received = recv(client_socket, buffer_ack, sizeof(buffer_ack), 0);
 
         // Verifica della risposta del server
-        if (bytes_received <= 0) {
+        if (bytes_received < 0) {
             perror("Errore nella ricezione dei dati\n");
             return 1;
         }
@@ -307,7 +307,7 @@ int main(int argc, char *argv[]) {
             char buffer[BUFFER_SIZE];
             size_t bytes_read;
             while ((bytes_read = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
-                if (send(client_socket, buffer, bytes_read, 0) == -1) {
+                if (send(client_socket, buffer, bytes_read, 0) < 0) {
                     perror("Errore nell'invio dei dati della PUT\n");
                     fclose(fp);
                     close(client_socket);
@@ -334,7 +334,7 @@ int main(int argc, char *argv[]) {
         }
 
         snprintf(request, sizeof(request), "LST %s\n", f_path);
-        if (send(client_socket, request, strlen(request), 0) == -1) {
+        if (send(client_socket, request, strlen(request), 0) < 0) {
             perror("Errore nell'invio della richiesta LS\n ");
             close(client_socket);
             return 1;
@@ -346,7 +346,7 @@ int main(int argc, char *argv[]) {
         // Ricezione della lista dal server
         char buffer[BUFFER_SIZE];
         ssize_t bytes_received = recv(client_socket, buffer, sizeof(buffer), 0);
-        if (bytes_received <= 0) {
+        if (bytes_received < 0) {
             fprintf(stderr, "Errore nella ricezione dei dati nella parte 1 della GET:\nDati mancanti o incorretti\n");
         } else
             if (strncmp(buffer, "ABSOLUTE_PATH_NOT_ALLOWED", 25) == 0) {
@@ -372,7 +372,7 @@ int main(int argc, char *argv[]) {
                                     printf("%s", buffer);
                                 }
 
-                                if (bytes_received == -1) {
+                                if (bytes_received < 0) {
                                     perror("Errore nella ricezione dei dati della LS");
                                 }
                             }

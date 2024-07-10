@@ -152,7 +152,7 @@ int handle_get(int client_socket, char *filename) {
     char buffer_out[BUFFER_SIZE];
     size_t bytes_read;
     while ((bytes_read = fread(buffer_out, 1, sizeof(buffer_out), fp)) > 0) {
-        if (send(client_socket, buffer_out, bytes_read, 0) == -1) {
+        if (send(client_socket, buffer_out, bytes_read, 0) < 0) {
             perror("Errore nell'invio dei dati");
             fclose(fp);
             close(client_socket);
