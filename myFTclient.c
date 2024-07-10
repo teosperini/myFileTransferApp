@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,6 +8,8 @@
 #include <linux/limits.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <libgen.h>
+#include <asm-generic/errno-base.h>
 
 
 #define BUFFER_SIZE 1024
@@ -19,45 +22,70 @@ void print_usage(const char *prog_name) {
     fprintf(stderr, "%s -l -a <IP address> -p <port number> -f <remote_path/>\n", prog_name);
 }
 
+//todo duplicate
 int is_valid_ip(const char *ip) {
     struct sockaddr_in sa;
     return inet_pton(AF_INET, ip, &(sa.sin_addr)) != 0;
 }
 
+// Funzione per ottenere il nome del file da un percorso completo
+const char *get_filename(const char *path) {
+    const char *last_slash = strrchr(path, '/');
+    if (last_slash != NULL) {
+        return last_slash + 1;
+    }
+    return path; // Se non ci sono slash nel percorso
+}
+
+// Funzione per ottenere la directory padre da un percorso completo
+char *get_parent_directory(const char *path) {
+    char *parent_path = strdup(path);
+    char *last_slash = strrchr(parent_path, '/');
+    if (last_slash != NULL) {
+        *last_slash = '\0';
+        return parent_path;
+    }
+    free(parent_path);
+    return NULL; // Se non ci sono slash nel percorso
+}
+
+//todo duplicate
 int is_valid_port(const char *port_str) {
     int port = atoi(port_str);
     return port > 0 && port <= 65535;
 }
 
 void create_directories(const char *path) {
+    if(path == NULL){
+        return;
+    }
+    printf("Path nella funzione: %s\n", path);
     if (strchr(path, '/') == NULL) {
         return;
     }
     char tmp[256];
     char *p = NULL;
-    size_t len;
 
     // Copia il percorso in una variabile temporanea
     snprintf(tmp, sizeof(tmp), "%s", path);
-    len = strlen(tmp);
-
-    // Trova l'ultimo '/' per escludere il nome del file
-    for (p = tmp + len - 1; p >= tmp; p--) {
-        if (*p == '/') {
-            *p = '\0';
-            break;
-        }
-    }
 
     // Crea le directory
     for (p = tmp + 1; *p; p++) {
         if (*p == '/') {
-            *p = 0;
-            mkdir(tmp, S_IRWXU);
+            *p = '\0';
+            printf("Creazione cartella: %s\n", tmp);
+            if (mkdir(tmp, S_IRWXU) != 0 && errno != EEXIST) {
+                perror("Errore nella creazione della directory");
+            }
             *p = '/';
         }
     }
-    mkdir(tmp, S_IRWXU);
+
+    // Crea la directory finale se necessario
+    if (mkdir(tmp, S_IRWXU) != 0 && errno != EEXIST) {
+        perror("Errore nella creazione della directory finale");
+    }
+    printf("Cartella finale creata: %s\n", tmp);
 }
 
 
@@ -204,9 +232,12 @@ int main(int argc, char *argv[]) {
                             if (strncmp(buffer, "SERVER_ERROR", 12) == 0) {
                                 fprintf(stderr, "Errore del server durante la GET\n");
                             } else {
-                                // Creazione delle directory se non esistono
-                                create_directories(o_path);
+
+                                printf("dir path '%s'\n", get_parent_directory(o_path));
+
+                                create_directories(get_parent_directory(o_path));
                                 // Apertura del file locale per la scrittura
+                                printf("o path = %s\n", o_path);
                                 FILE *fp = fopen(o_path, "wb");
                                 if (fp == NULL) {
                                     perror("Errore nell'apertura del file locale scrittura\n");
