@@ -134,8 +134,8 @@ int handle_ls(int client_socket, char* filename) {
     if(!check_absolute_path(client_socket, filename)) {
         return 1;
     }
-    char path[BUFFER_SIZE] = "ls ";
 
+    char path[BUFFER_SIZE] = "ls ";
     strcat(path, filename);
 
     FILE *fp = popen(path, "r");
@@ -145,13 +145,9 @@ int handle_ls(int client_socket, char* filename) {
     }
 
     char bufferOut[BUFFER_SIZE];
-
-    // Leggi il risultato del comando
     while (fgets(bufferOut, sizeof(bufferOut), fp) != NULL) {
-        // Manda il risultato al client
         send(client_socket, bufferOut, strlen(bufferOut), 0);
     }
-    printf(" ls inviato correttamente\n");
 
     pclose(fp);
     return 0;

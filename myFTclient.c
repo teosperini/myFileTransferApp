@@ -234,7 +234,6 @@ int main(int argc, char *argv[]) {
         }
     } else if (type_w) {
 
-        //TODO impedire un path assoluto
         // Operazione di scrittura (put)
         // Invio della richiesta al server
         snprintf(request, sizeof(request), "PUT %s\n", o_path);
@@ -270,7 +269,7 @@ int main(int argc, char *argv[]) {
                                 fprintf(stderr, "Errore del server durante la GET\n");
                             }
         } else {
-            printf("Ack ricevuto correttamente\n");
+            //printf("Ack ricevuto correttamente\n");
 
             // Apertura del file locale per la lettura
             FILE *fp = fopen(f_path, "rb");
@@ -280,7 +279,6 @@ int main(int argc, char *argv[]) {
                 return 1;
             }
 
-            printf("CIAO\n");
             // Invio del file al server
             char buffer[BUFFER_SIZE];
             size_t bytes_read;
@@ -342,6 +340,7 @@ int main(int argc, char *argv[]) {
                             if (strncmp(buffer, "SERVER_ERROR", 12) == 0) {
                                 fprintf(stderr, "Errore del server durante la GET\n");
                             } else {
+                                buffer[bytes_received] = '\0';
                                 // Continua a ricevere i dati rimanenti, se ce ne sono
                                 printf("%s", buffer);
                                 while ((bytes_received = recv(client_socket, buffer, sizeof(buffer) - 1, 0)) > 0) {
