@@ -24,15 +24,6 @@ void print_usage(const char *prog_name) {
     fprintf(stderr, "Uso: %s -d <directory> -a <indirizzo IP> -p <numero di porta> [-h]\n", prog_name);
 }
 
-// Stampa i caratteri e i loro codici ASCII
-void print_string_ascii(const char *str) {
-    int i = 0;
-    while (str[i] != '\0') {
-        printf("Carattere: %c, Codice ASCII: %d\n", str[i], str[i]);
-        i++;
-    }
-}
-
 // Restituisce il percorso della directory padre
 char *get_parent_directory(const char *path) {
     char *parent_path = strdup(path);
@@ -60,9 +51,9 @@ void remove_crlf(char *str) {
 }
 
 // Crea le directory necessarie per il percorso specificato
-void create_directories(const char *path) {
+int create_directories(const char *path) {
     if(path == NULL){
-        return;
+        return 0;
     }
     printf("Path nella funzione: %s\n", path);
     char tmp[256];
@@ -78,6 +69,7 @@ void create_directories(const char *path) {
             printf("Creazione cartella: %s\n", tmp);
             if (mkdir(tmp, S_IRWXU) != 0 && errno != EEXIST) {
                 perror("Errore nella creazione della directory");
+                return -1;
             }
             *p = '/';
         }
@@ -86,8 +78,10 @@ void create_directories(const char *path) {
     // Crea la directory finale se necessario
     if (mkdir(tmp, S_IRWXU) != 0 && errno != EEXIST) {
         perror("Errore nella creazione della directory finale");
+        return -1;
     }
     printf("Cartella finale creata: %s\n", tmp);
+    return 0;
 }
 
 // Controlla la validità dell'indirizzo IP
@@ -114,8 +108,9 @@ bool check_absolute_path(char* filename) {
 // Gestisce il comando "LS" inviato dal client
 int handle_ls(int client_socket, char* filename) {
     if(!check_absolute_path(filename)) {
-        send(client_socket, "ABSOLUTE_PATH_NOT_ALLOWED\n", 26, 0);
-        return 1;
+        send(client_socket, "ABSOLUTE_PATH_NOT_ALLOWED", 25, 0);
+        close(client_socket);
+        return -1;
     }
 
     char path[BUFFER_SIZE] = "ls ";
@@ -124,7 +119,8 @@ int handle_ls(int client_socket, char* filename) {
     FILE *fp = popen(path, "r");
     if (fp == NULL) {
         perror("popen");
-        return 1;
+        close(client_socket);
+        return -1;
     }
 
     char bufferOut[BUFFER_SIZE];
@@ -139,15 +135,17 @@ int handle_ls(int client_socket, char* filename) {
 // Gestisce il comando "GET" inviato dal client
 int handle_get(int client_socket, char *filename) {
     if(!check_absolute_path(filename)) {
-        send(client_socket, "ABSOLUTE_PATH_NOT_ALLOWED\n", 26, 0);
-        return 1;
+        send(client_socket, "ABSOLUTE_PATH_NOT_ALLOWED", 25, 0);
+        close(client_socket);
+        return -1;
     }
 
     FILE *fp = fopen(filename, "r");
     if (fp == NULL) {
         perror("fopen");
-        send(client_socket, "FILE_NOT_FOUND\n", 15, 0);
-        return 1;
+        send(client_socket, "FILE_NOT_FOUND", 14, 0);
+        close(client_socket);
+        return -1;
     }
 
     // Invio l'ACK al client
@@ -163,7 +161,7 @@ int handle_get(int client_socket, char *filename) {
                 perror("Errore nell'invio dei dati");
                 fclose(fp);
                 close(client_socket);
-                return 1;
+                return -1;
             }
         }
     }
@@ -174,16 +172,21 @@ int handle_get(int client_socket, char *filename) {
 // Gestisce il comando "PUT" inviato dal client
 int handle_put(int client_socket, char* filename) {
     if(!check_absolute_path(filename)) {
-        send(client_socket, "ABSOLUTE_PATH_NOT_ALLOWED\n", 26, 0);
-        return 1;
+        send(client_socket, "ABSOLUTE_PATH_NOT_ALLOWED", 25, 0);
+        close(client_socket);
+        return -1;
     }
-    create_directories(get_parent_directory(filename));
+    if(create_directories(get_parent_directory(filename)) < 0) {
+        send(client_socket, "CANNOT_CREATE_DIRECTORY", 23, 0);
+        close(client_socket);
+        return -1;
+    }
 
     FILE *fp = fopen(filename, "wb");
     if (fp == NULL) {
         perror("Errore nell'apertura del file sul server in scrittura");
         close(client_socket);
-        return 1;
+        return -1;
     }
 
     send(client_socket, "ACK", 3, 0);
@@ -208,6 +211,9 @@ int handle_client(int client_socket) {
     if (bytes_read > 0) {
         buffer_in[bytes_read] = '\0';
         printf("Messaggio ricevuto dal client: %s\n", buffer_in);
+    } else {
+        close(client_socket);
+        return -1;
     }
     char* command = buffer_in;
     char* filename = buffer_in+4;
@@ -273,7 +279,7 @@ int main(int argc, char *argv[])
             return 0;
         default:
             print_usage(argv[0]);
-            return 1;
+            return -1;
         }
     }
 
@@ -281,32 +287,32 @@ int main(int argc, char *argv[])
     if (directory == NULL) {
         fprintf(stderr, "L'opzione -d <directory> è obbligatoria\n");
         print_usage(argv[0]);
-        return 1;
+        return -1;
     }
 
     // Verifica che l'opzione -a sia stata fornita
     if (ip_address == NULL) {
         fprintf(stderr, "L'opzione -a <indirizzo IP> è obbligatoria\n");
         print_usage(argv[0]);
-        return 1;
+        return -1;
     }
     // Verifica che l'opzione -p sia stata fornita
     if (port_str == NULL) {
         fprintf(stderr, "L'opzione -p <numero di porta> è obbligatoria\n");
         print_usage(argv[0]);
-        return 1;
+        return -1;
     }
 
     // Controllo di validità dell'indirizzo IP
     if (!is_valid_ip(ip_address)) {
         fprintf(stderr, "L'indirizzo IP '%s' non è valido.\n", ip_address);
-        return 1;
+        return -1;
     }
 
     // Controllo di validità del numero di porta
     if (!is_valid_port(port_str)) {
         fprintf(stderr, "Il numero di porta '%s' non è valido.\n", port_str);
-        return 1;
+        return -1;
     }
 
     // Stampa l'indirizzo IP e il numero di porta specificati
@@ -314,13 +320,16 @@ int main(int argc, char *argv[])
     printf("Numero di porta specificato: %s\n", port_str);
 
     // Controlla e crea la cartella
-    create_directories(get_parent_directory(directory));
+    if(create_directories(get_parent_directory(directory)) < 0) {
+        // La creazione della cartella è fallita
+        return -1;
+    }
 
     // posizionati nella cartella specificata; se non riesci ritorna errore
     if (chdir(directory) != 0) {
         perror("chdir failed");
         printf("non riesco ad entrare nella cartella '%s'\n", directory);
-        return 1;
+        return -1;
     }
 
     struct sockaddr_in server_addr, client_addr;
@@ -328,7 +337,7 @@ int main(int argc, char *argv[])
     // Crea il server socket TCP
     if ((server_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("Errore nella creazione del socket");
-        return 1;
+        return -1;
     }
 
     // Prepara l'indirizzo del server
@@ -342,21 +351,21 @@ int main(int argc, char *argv[])
     if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option)) == -1) {
         perror("Errore nella impostazione di SO_REUSEADDR");
         close(server_socket);
-        return 1;
+        return -1;
     }
 
     // Associa l'indirizzo e la porta al server socket
     if (bind(server_socket, (struct sockaddr *) &server_addr, sizeof(server_addr)) == -1) {
         perror("Errore nell'associazione dell'indirizzo e porta al socket");
         close(server_socket);
-        return 1;
+        return -1;
     }
 
     // Mette il socket in ascolto; impostiamo il no di pending connection a 5
     if (listen(server_socket, 5) == -1) {
         perror("Errore nella messa in ascolto del socket");
         close(server_socket);
-        return 1;
+        return -1;
     }
 
     printf("Server in ascolto su %s:%s\n", ip_address, port_str);
@@ -374,7 +383,7 @@ int main(int argc, char *argv[])
         if ((*client_socket = accept(server_socket, (struct sockaddr *) &client_addr, &client_len)) == -1) {
             perror("Errore nell'accettazione della connessione");
             close(server_socket);
-            return 1;
+            return -1;
         }
 
         // Thread che gestisce la connessione del client
