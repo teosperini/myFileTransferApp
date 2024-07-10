@@ -103,10 +103,9 @@ int is_valid_port(const char *port_str) {
 }
 
 // Verifica che il percorso non sia assoluto
-bool check_absolute_path(int client_socket, char* filename) {
+bool check_absolute_path(char* filename) {
     if (filename[0] == '/') {
         fprintf(stderr, "Access denied: '%s' is outside the server directory\n", filename);
-        send(client_socket, "ABSOLUTE_PATH_NOT_ALLOWED\n", 26, 0);
         return false;
     }
     return true;
@@ -114,7 +113,8 @@ bool check_absolute_path(int client_socket, char* filename) {
 
 // Gestisce il comando "LS" inviato dal client
 int handle_ls(int client_socket, char* filename) {
-    if(!check_absolute_path(client_socket, filename)) {
+    if(!check_absolute_path(filename)) {
+        send(client_socket, "ABSOLUTE_PATH_NOT_ALLOWED\n", 26, 0);
         return 1;
     }
 
@@ -138,7 +138,8 @@ int handle_ls(int client_socket, char* filename) {
 
 // Gestisce il comando "GET" inviato dal client
 int handle_get(int client_socket, char *filename) {
-    if(!check_absolute_path(client_socket, filename)) {
+    if(!check_absolute_path(filename)) {
+        send(client_socket, "ABSOLUTE_PATH_NOT_ALLOWED\n", 26, 0);
         return 1;
     }
 
@@ -149,14 +150,21 @@ int handle_get(int client_socket, char *filename) {
         return 1;
     }
 
-    char buffer_out[BUFFER_SIZE];
-    size_t bytes_read;
-    while ((bytes_read = fread(buffer_out, 1, sizeof(buffer_out), fp)) > 0) {
-        if (send(client_socket, buffer_out, bytes_read, 0) < 0) {
-            perror("Errore nell'invio dei dati");
-            fclose(fp);
-            close(client_socket);
-            return 1;
+    // Invio l'ACK al client
+    send(client_socket, "ACK", 3, 0);
+
+    // Aspetto l'ACK del client
+    char buffer[BUFFER_SIZE];
+    recv(client_socket, buffer, sizeof(buffer), 0);
+    if (strncmp(buffer, "ACK", 3)) {
+        size_t bytes_read;
+        while ((bytes_read = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
+            if (send(client_socket, buffer, bytes_read, 0) < 0) {
+                perror("Errore nell'invio dei dati");
+                fclose(fp);
+                close(client_socket);
+                return 1;
+            }
         }
     }
     fclose(fp);
@@ -165,7 +173,8 @@ int handle_get(int client_socket, char *filename) {
 
 // Gestisce il comando "PUT" inviato dal client
 int handle_put(int client_socket, char* filename) {
-    if(!check_absolute_path(client_socket, filename)) {
+    if(!check_absolute_path(filename)) {
+        send(client_socket, "ABSOLUTE_PATH_NOT_ALLOWED\n", 26, 0);
         return 1;
     }
     create_directories(get_parent_directory(filename));
