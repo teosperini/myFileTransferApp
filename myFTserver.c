@@ -105,6 +105,17 @@ bool check_absolute_path(char* filename) {
     return true;
 }
 
+// Controlla se il path corrisponde ad un file o una directory
+int is_directory(char *path) {
+    struct stat statbuf;
+    if (stat(path, &statbuf) != 0) {
+        // Error in stat
+        perror("stat");
+        return 0;
+    }
+    return S_ISDIR(statbuf.st_mode);
+}
+
 // Gestisce il comando "LS" inviato dal client
 int handle_ls(int client_socket, char* filename) {
     if(!check_absolute_path(filename)) {
@@ -119,15 +130,23 @@ int handle_ls(int client_socket, char* filename) {
     FILE *fp = popen(path, "r");
     if (fp == NULL) {
         perror("popen");
+        send(client_socket, "DIRECTORY_NOT_FOUND", 19, 0);
         close(client_socket);
         return -1;
     }
 
-    char bufferOut[BUFFER_SIZE];
-    while (fgets(bufferOut, sizeof(bufferOut), fp) != NULL) {
-        send(client_socket, bufferOut, strlen(bufferOut), 0);
-    }
+    // Invio l'ACK al client
+    send(client_socket, "ACK", 3, 0);
 
+    // Aspetto l'ACK del client
+    char buffer[BUFFER_SIZE];
+    recv(client_socket, buffer, sizeof(buffer), 0);
+
+    if (strncmp(buffer, "ACK", 3) == 0) {
+        while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+            send(client_socket, buffer, strlen(buffer), 0);
+        }
+    }
     pclose(fp);
     return 0;
 }
@@ -140,6 +159,12 @@ int handle_get(int client_socket, char *filename) {
         return -1;
     }
 
+    if(is_directory(filename)) {
+        fprintf(stderr, "Errore, è una directory");
+        send(client_socket, "IT_IS_A_DIRECTORY", 17, 0);
+        close(client_socket);
+        return -1;
+    }
     FILE *fp = fopen(filename, "r");
     if (fp == NULL) {
         perror("fopen");
@@ -154,6 +179,7 @@ int handle_get(int client_socket, char *filename) {
     // Aspetto l'ACK del client
     char buffer[BUFFER_SIZE];
     recv(client_socket, buffer, sizeof(buffer), 0);
+
     if (strncmp(buffer, "ACK", 3) == 0) {
         size_t bytes_read;
         while ((bytes_read = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
