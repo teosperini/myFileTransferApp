@@ -12,18 +12,19 @@
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
-#include <asm-generic/errno-base.h>
-#include <bits/signum-generic.h>
 
 #define BUFFER_SIZE 1024
 
 int server_socket; // dichiarare globalmente il server socket
 
+// Funzioni di utilità
+
+// Stampa l'uso corretto del programma
 void print_usage(const char *prog_name) {
     fprintf(stderr, "Uso: %s -d <directory> -a <indirizzo IP> -p <numero di porta> [-h]\n", prog_name);
 }
 
-// UTILITY
+// Stampa i caratteri e i loro codici ASCII
 void print_string_ascii(const char *str) {
     int i = 0;
     while (str[i] != '\0') {
@@ -32,6 +33,7 @@ void print_string_ascii(const char *str) {
     }
 }
 
+// Restituisce il percorso della directory padre
 char *get_parent_directory(const char *path) {
     char *parent_path = strdup(path);
     char *last_slash = strrchr(parent_path, '/');
@@ -43,6 +45,7 @@ char *get_parent_directory(const char *path) {
     return NULL; // Se non ci sono slash nel percorso
 }
 
+// Rimuove i caratteri \r e \n dalla stringa
 void remove_crlf(char *str) {
     int i, j = 0;
     int len = strlen(str);
@@ -56,8 +59,7 @@ void remove_crlf(char *str) {
     str[j] = '\0'; // Termina la stringa con il carattere null
 }
 
-// UTILITY END
-
+// Crea le directory necessarie per il percorso specificato
 void create_directories(const char *path) {
     if(path == NULL){
         return;
@@ -88,18 +90,19 @@ void create_directories(const char *path) {
     printf("Cartella finale creata: %s\n", tmp);
 }
 
-
-
+// Controlla la validità dell'indirizzo IP
 int is_valid_ip(const char *ip) {
     struct sockaddr_in sa;
     return inet_pton(AF_INET, ip, &(sa.sin_addr)) != 0;
 }
 
+// Controlla la validità del numero di porta
 int is_valid_port(const char *port_str) {
     int port = atoi(port_str);
     return port > 0 && port <= 65535;
 }
 
+// Verifica che il percorso non sia assoluto
 bool check_absolute_path(int client_socket, char* filename) {
     if (filename[0] == '/') {
         fprintf(stderr, "Access denied: '%s' is outside the server directory\n", filename);
@@ -109,6 +112,7 @@ bool check_absolute_path(int client_socket, char* filename) {
     return true;
 }
 
+// Gestisce il comando "LS" inviato dal client
 int handle_ls(int client_socket, char* filename) {
     if(!check_absolute_path(client_socket, filename)) {
         return 1;
@@ -132,6 +136,7 @@ int handle_ls(int client_socket, char* filename) {
     return 0;
 }
 
+// Gestisce il comando "GET" inviato dal client
 int handle_get(int client_socket, char *filename) {
     if(!check_absolute_path(client_socket, filename)) {
         return 1;
@@ -158,12 +163,12 @@ int handle_get(int client_socket, char *filename) {
     return 0;
 }
 
+// Gestisce il comando "PUT" inviato dal client
 int handle_put(int client_socket, char* filename) {
     if(!check_absolute_path(client_socket, filename)) {
         return 1;
     }
     create_directories(get_parent_directory(filename));
-
 
     FILE *fp = fopen(filename, "wb");
     if (fp == NULL) {
@@ -186,8 +191,7 @@ int handle_put(int client_socket, char* filename) {
     return 0;
 }
 
-
-// gestisce la comunicazione con il client
+// Gestisce la comunicazione con il client
 int handle_client(int client_socket) {
     char buffer_in[BUFFER_SIZE];
     // legge il messaggio inviato dal client
@@ -207,14 +211,13 @@ int handle_client(int client_socket) {
     } else if (strncmp(command, "PUT ", 4) == 0) {
         handle_put(client_socket, filename);
     }
-    //printf("FILE: %s\n", filename);
 
     // chiudi il socket
     close(client_socket);
     return 0;
 }
 
-
+// Thread che gestisce il client
 void *client_thread(void *arg) {
     // copio il socket in una variabile locale alla funzione
     int client_socket = *((int *)arg);
@@ -226,6 +229,7 @@ void *client_thread(void *arg) {
     return NULL;
 }
 
+// Gestisce il segnale SIGINT per terminare il server
 void handle_sigint(int sig) {
     printf("Interruzione ricevuta. Chiudendo il socket...\n");
     if (shutdown(server_socket, SHUT_RDWR) == -1) {
@@ -235,9 +239,9 @@ void handle_sigint(int sig) {
     exit(0);
 }
 
-
-
-int main(int argc, char *argv[]) {
+// Funzione principale del server
+int main(int argc, char *argv[])
+{
     char *directory = NULL;
     char *ip_address = NULL;
     char *port_str = NULL;
@@ -246,21 +250,21 @@ int main(int argc, char *argv[]) {
     // Analizza le opzioni della linea di comando
     while ((opt = getopt(argc, argv, "d:a:p:h")) != -1) {
         switch (opt) {
-            case 'd':
-                directory = optarg;
-                break;
-            case 'a':
-                ip_address = optarg;
-                break;
-            case 'p':
-                port_str = optarg;
-                break;
-            case 'h':
-                print_usage(argv[0]);
-                return 0;
-            default:
-                print_usage(argv[0]);
-                return 1;
+        case 'd':
+            directory = optarg;
+            break;
+        case 'a':
+            ip_address = optarg;
+            break;
+        case 'p':
+            port_str = optarg;
+            break;
+        case 'h':
+            print_usage(argv[0]);
+            return 0;
+        default:
+            print_usage(argv[0]);
+            return 1;
         }
     }
 
@@ -277,7 +281,6 @@ int main(int argc, char *argv[]) {
         print_usage(argv[0]);
         return 1;
     }
-
     // Verifica che l'opzione -p sia stata fornita
     if (port_str == NULL) {
         fprintf(stderr, "L'opzione -p <numero di porta> è obbligatoria\n");
@@ -340,7 +343,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-
     // Mette il socket in ascolto; impostiamo il no di pending connection a 5
     if (listen(server_socket, 5) == -1) {
         perror("Errore nella messa in ascolto del socket");
@@ -350,6 +352,7 @@ int main(int argc, char *argv[]) {
 
     printf("Server in ascolto su %s:%s\n", ip_address, port_str);
 
+    // Gestione del segnale SIGINT per terminare il server
     signal(SIGINT, handle_sigint);
 
     // Accetta le connessioni in entrata
@@ -365,7 +368,7 @@ int main(int argc, char *argv[]) {
             return 1;
         }
 
-        // thread che gestisce la connessione del client: vuole una funzione con un unico argomento puntatore generico (void*) che accetta un unico parametro puntatore generico (void*)
+        // Thread che gestisce la connessione del client
         pthread_t tid;
         pthread_create(&tid, NULL, client_thread, client_socket);
         pthread_detach(tid);
