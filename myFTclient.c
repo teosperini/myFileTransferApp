@@ -8,7 +8,6 @@
 #include <linux/limits.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <libgen.h>
 #include <asm-generic/errno-base.h>
 
 
@@ -55,20 +54,17 @@ int is_valid_port(const char *port_str) {
     return port > 0 && port <= 65535;
 }
 
-void create_directories(const char *path) {
+void create_directories(char *path) {
     if(path == NULL){
         return;
     }
     printf("Path nella funzione: %s\n", path);
-    if (strchr(path, '/') == NULL) {
-        return;
-    }
     char tmp[256];
     char *p = NULL;
 
     // Copia il percorso in una variabile temporanea
     snprintf(tmp, sizeof(tmp), "%s", path);
-
+    free(path);
     // Crea le directory
     for (p = tmp + 1; *p; p++) {
         if (*p == '/') {
@@ -232,12 +228,9 @@ int main(int argc, char *argv[]) {
                             if (strncmp(buffer, "SERVER_ERROR", 12) == 0) {
                                 fprintf(stderr, "Errore del server durante la GET\n");
                             } else {
-
-                                printf("dir path '%s'\n", get_parent_directory(o_path));
-
                                 create_directories(get_parent_directory(o_path));
+
                                 // Apertura del file locale per la scrittura
-                                printf("o path = %s\n", o_path);
                                 FILE *fp = fopen(o_path, "wb");
                                 if (fp == NULL) {
                                     perror("Errore nell'apertura del file locale scrittura\n");

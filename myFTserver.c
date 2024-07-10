@@ -14,7 +14,6 @@
 #include <stdbool.h>
 #include <asm-generic/errno-base.h>
 #include <bits/signum-generic.h>
-#include <linux/limits.h>
 
 #define BUFFER_SIZE 1024
 
@@ -163,8 +162,8 @@ int handle_put(int client_socket, char* filename) {
     if(!check_absolute_path(client_socket, filename)) {
         return 1;
     }
-
     create_directories(get_parent_directory(filename));
+
 
     FILE *fp = fopen(filename, "wb");
     if (fp == NULL) {
@@ -303,7 +302,7 @@ int main(int argc, char *argv[]) {
     printf("Numero di porta specificato: %s\n", port_str);
 
     // Controlla e crea la cartella
-    create_directories(directory);
+    create_directories(get_parent_directory(directory));
 
     // posizionati nella cartella specificata; se non riesci ritorna errore
     if (chdir(directory) != 0) {
