@@ -156,7 +156,7 @@ int handle_get(int client_socket, char *filename) {
     // Aspetto l'ACK del client
     char buffer[BUFFER_SIZE];
     recv(client_socket, buffer, sizeof(buffer), 0);
-    if (strncmp(buffer, "ACK", 3)) {
+    if (strncmp(buffer, "ACK", 3) == 0) {
         size_t bytes_read;
         while ((bytes_read = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
             if (send(client_socket, buffer, bytes_read, 0) < 0) {
