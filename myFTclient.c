@@ -10,7 +10,6 @@
 #include <sys/types.h>
 #include <asm-generic/errno-base.h>
 
-
 #define BUFFER_SIZE 1024
 
 // Funzione per stampare l'uso del programma
@@ -21,7 +20,7 @@ void print_usage(const char *prog_name) {
     fprintf(stderr, "%s -l -a <IP address> -p <port number> -f <remote_path/>\n", prog_name);
 }
 
-//todo duplicate
+// Funzione per verificare la validità dell'indirizzo IP
 int is_valid_ip(const char *ip) {
     struct sockaddr_in sa;
     return inet_pton(AF_INET, ip, &(sa.sin_addr)) != 0;
@@ -48,14 +47,15 @@ char *get_parent_directory(const char *path) {
     return NULL; // Se non ci sono slash nel percorso
 }
 
-//todo duplicate
+// Funzione per verificare la validità del numero di porta
 int is_valid_port(const char *port_str) {
     int port = atoi(port_str);
     return port > 0 && port <= 65535;
 }
 
+// Funzione per creare directory
 void create_directories(char *path) {
-    if(path == NULL){
+    if (path == NULL) {
         return;
     }
     printf("Path nella funzione: %s\n", path);
@@ -65,6 +65,7 @@ void create_directories(char *path) {
     // Copia il percorso in una variabile temporanea
     snprintf(tmp, sizeof(tmp), "%s", path);
     free(path);
+
     // Crea le directory
     for (p = tmp + 1; *p; p++) {
         if (*p == '/') {
@@ -84,9 +85,6 @@ void create_directories(char *path) {
     printf("Cartella finale creata: %s\n", tmp);
 }
 
-
-
-
 int main(int argc, char *argv[]) {
     int type_w = 0;
     int type_r = 0;
@@ -103,31 +101,31 @@ int main(int argc, char *argv[]) {
         switch (opt) {
             case 'w':
                 type_w = 1;
-            break;
+                break;
             case 'r':
                 type_r = 1;
-            break;
+                break;
             case 'l':
                 type_l = 1;
-            break;
+                break;
             case 'a':
                 server_ip = optarg;
-            break;
+                break;
             case 'p':
                 port_str = optarg;
-            break;
+                break;
             case 'f':
                 f_path = optarg;
-            break;
+                break;
             case 'o':
                 o_path = optarg;
-            break;
+                break;
             case 'h':
                 print_usage(argv[0]);
-            return 0;
+                return 0;
             default:
                 print_usage(argv[0]);
-            return 1;
+                return 1;
         }
     }
 
@@ -318,7 +316,7 @@ int main(int argc, char *argv[]) {
         bool f_was_null = false;
         if (f_path == NULL) {
             f_was_null = true;
-            f_path = malloc(sizeof(char*)*PATH_MAX);
+            f_path = malloc(sizeof(char *) * PATH_MAX);
             strcat(f_path, "");
         }
 
@@ -346,7 +344,7 @@ int main(int argc, char *argv[]) {
             if (strncmp(buffer, "ABSOLUTE_PATH_NOT_ALLOWED", 25) == 0) {
                 fprintf(stderr, "L'utilizzo di un path assoluto non è permesso");
             } else if (strncmp(buffer, "DIRECTORY_NOT_FOUND", 19) == 0) {
-                fprintf(stderr, "La directory %s non esiste\n",f_path);
+                fprintf(stderr, "La directory %s non esiste\n", f_path);
             } else {
                 fprintf(stderr, "Errore sconosciuto\n");
             }

@@ -202,6 +202,7 @@ int handle_put(int client_socket, char* filename) {
         close(client_socket);
         return -1;
     }
+    //TODO il filename va liberato dopo get_parent_directory?
     if(create_directories(get_parent_directory(filename)) < 0) {
         send(client_socket, "CANNOT_CREATE_DIRECTORY", 23, 0);
         close(client_socket);
@@ -346,7 +347,7 @@ int main(int argc, char *argv[])
     printf("Numero di porta specificato: %s\n", port_str);
 
     // Controlla e crea la cartella
-    if(create_directories(get_parent_directory(directory)) < 0) {
+    if(create_directories(directory) < 0) {
         // La creazione della cartella è fallita
         return -1;
     }
