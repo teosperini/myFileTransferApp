@@ -1,5 +1,6 @@
-/echo_client
-/echo_server
+/myFTclient
+/myFTserver
+/path_semaphore.o
 /.idea/editor.xml
 /.idea/modules.xml
 /.idea/projectMyFileTransferApp.iml

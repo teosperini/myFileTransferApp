@@ -19,14 +19,14 @@ def send_put_command(client_name):
 
         # Costruzione del comando PUT
         command = f"PUT {file_to_write}"
-        
+
         # Invio del comando PUT al server
         print(f"{client_name}: Invio comando PUT")
         client_socket.sendall(command.encode())
-        
+
         # Simulazione di un piccolo ritardo prima di inviare i dati
         time.sleep(0.5)
-        
+
         # Invio dei dati al server
         print(f"{client_name}: Invio dati")
         client_socket.sendall(data_to_write.encode())
@@ -41,19 +41,19 @@ def send_put_command(client_name):
 
 # Creazione dei client e invio dei comandi PUT
 try:
-    # Creazione dei thread per i clienti
-    thread1 = threading.Thread(target=send_put_command, args=("Client1",))
-    thread2 = threading.Thread(target=send_put_command, args=("Client2",))
+    while(True):
+        # Creazione dei thread per i clienti
+        thread1 = threading.Thread(target=send_put_command, args=("Client1",))
+        thread2 = threading.Thread(target=send_put_command, args=("Client2",))
 
-    # Avvio dei thread
-    thread1.start()
-    thread2.start()
+        # Avvio dei thread
+        thread1.start()
+        thread2.start()
 
-    # Attesa della terminazione dei thread
-    thread1.join()
-    thread2.join()
+        # Attesa della terminazione dei thread
+        thread1.join()
+        thread2.join()
 
 except Exception as e:
     print(f"Errore durante l'esecuzione dei client: {e}")
     sys.exit(1)
-
