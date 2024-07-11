@@ -155,9 +155,11 @@ int handle_ls(int client_socket, char* filename) {
 
 // Gestisce il comando "GET" inviato dal client
 int handle_get(int client_socket, char *filename) {
+    add_path_semaphore(filename);
     if(!check_absolute_path(filename)) {
         send(client_socket, "ABSOLUTE_PATH_NOT_ALLOWED", 25, 0);
         close(client_socket);
+        unlock_path(filename);
         return -1;
     }
 
@@ -167,13 +169,18 @@ int handle_get(int client_socket, char *filename) {
         fprintf(stderr, "Errore, è una directory");
         send(client_socket, "IT_IS_A_DIRECTORY", 17, 0);
         close(client_socket);
+        unlock_path(filename);
         return -1;
     }
+
+    lock_path(filename);
+
     FILE *fp = fopen(filename, "r");
     if (fp == NULL) {
         perror("fopen");
         send(client_socket, "FILE_NOT_FOUND", 14, 0);
         close(client_socket);
+        unlock_path(filename);
         return -1;
     }
 
@@ -191,11 +198,13 @@ int handle_get(int client_socket, char *filename) {
                 perror("Errore nell'invio dei dati");
                 fclose(fp);
                 close(client_socket);
+                unlock_path(filename);
                 return -1;
             }
         }
     }
     fclose(fp);
+    unlock_path(filename);
     return 0;
 }
 
@@ -207,6 +216,8 @@ int handle_put(int client_socket, char* filename) {
     if (!check_absolute_path(filename)) {
         send(client_socket, "ABSOLUTE_PATH_NOT_ALLOWED", 25, 0);
         close(client_socket);
+        unlock_path(filename);
+        printf("File %s Bloccato.\n", filename);
         return -1;
     }
 
@@ -214,8 +225,11 @@ int handle_put(int client_socket, char* filename) {
     if (create_directories(get_parent_directory(filename)) < 0) {
         send(client_socket, "CANNOT_CREATE_DIRECTORY", 23, 0);
         close(client_socket);
+        unlock_path(filename);
+        printf("File %s Bloccato.\n", filename);
         return -1;
     }
+
 
     // Blocca l'accesso al file
     lock_path(filename);
@@ -227,6 +241,7 @@ int handle_put(int client_socket, char* filename) {
         perror("Errore nell'apertura del file sul server in scrittura");
         close(client_socket);
         unlock_path(filename); // Assicurati di sbloccare il percorso in caso di errore
+        printf("File %s Bloccato.\n", filename);
         return -1;
     }
 
@@ -242,12 +257,14 @@ int handle_put(int client_socket, char* filename) {
     // Chiudi il file e sblocca il percorso
     fclose(fp);
 
+    sleep(10);
 
+    // Sblocca il percorso
     unlock_path(filename);
-
     printf("File %s Sbloccato.\n", filename);
     return 0;
 }
+
 
 // Gestisce la comunicazione con il client
 int handle_client(int client_socket) {

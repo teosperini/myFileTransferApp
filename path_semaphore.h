@@ -18,13 +18,6 @@ struct path_semaphore {
 void add_path_semaphore(const char *path);
 
 /**
- * @brief Rimuove il semaforo per il path specificato.
- *
- * @param path Il path per cui rimuovere il semaforo.
- */
-void remove_path_semaphore(const char *path);
-
-/**
  * @brief Blocca l'accesso al path specificato.
  *
  * @param path Il path da bloccare.
