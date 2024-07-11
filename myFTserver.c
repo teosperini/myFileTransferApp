@@ -224,12 +224,15 @@ int handle_put(int client_socket, char* filename) {
     printf("File %s bloccato.\n", filename);
 
     // Crea le directory necessarie
-    if (create_directories(get_parent_directory(filename)) < 0) {
-        send(client_socket, "CANNOT_CREATE_DIRECTORY", 23, 0);
-        close(client_socket);
-        unlock(filename);
-        printf("File %s sbloccato.\n", filename);
-        return -1;
+    char *parent_dir = get_parent_directory(filename);
+    if (parent_dir) {
+        if (create_directories(parent_dir) < 0) {
+            send(client_socket, "CANNOT_CREATE_DIRECTORY", 23, 0);
+            close(client_socket);
+            free(parent_dir);
+            return -1;
+        }
+        free(parent_dir); // Libera la memoria qui
     }
 
     // Apri il file per la scrittura
