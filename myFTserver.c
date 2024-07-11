@@ -12,8 +12,10 @@
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
+#include "path_semaphore.h"
 
 #define BUFFER_SIZE 1024
+
 
 int server_socket; // dichiarare globalmente il server socket
 
@@ -159,6 +161,8 @@ int handle_get(int client_socket, char *filename) {
         return -1;
     }
 
+    // Qui potrei creare la struct in qualche modo
+
     if(is_directory(filename)) {
         fprintf(stderr, "Errore, è una directory");
         send(client_socket, "IT_IS_A_DIRECTORY", 17, 0);
@@ -197,53 +201,68 @@ int handle_get(int client_socket, char *filename) {
 
 // Gestisce il comando "PUT" inviato dal client
 int handle_put(int client_socket, char* filename) {
-    if(!check_absolute_path(filename)) {
+    // Aggiungi il semaforo per il percorso del file
+    add_path_semaphore(filename);
+    // Verifica che il percorso non sia assoluto
+    if (!check_absolute_path(filename)) {
         send(client_socket, "ABSOLUTE_PATH_NOT_ALLOWED", 25, 0);
         close(client_socket);
         return -1;
     }
-    //TODO il filename va liberato dopo get_parent_directory?
-    if(create_directories(get_parent_directory(filename)) < 0) {
+
+    // Crea le directory necessarie
+    if (create_directories(get_parent_directory(filename)) < 0) {
         send(client_socket, "CANNOT_CREATE_DIRECTORY", 23, 0);
         close(client_socket);
         return -1;
     }
 
+    // Blocca l'accesso al file
+    lock_path(filename);
+    printf("File %s Bloccato.\n", filename);
+
+    // Apri il file per la scrittura
     FILE *fp = fopen(filename, "wb");
     if (fp == NULL) {
         perror("Errore nell'apertura del file sul server in scrittura");
         close(client_socket);
+        unlock_path(filename); // Assicurati di sbloccare il percorso in caso di errore
         return -1;
     }
 
+    // Invia l'ACK al client per confermare la ricezione del comando
     send(client_socket, "ACK", 3, 0);
 
-    char buffer_in[BUFFER_SIZE];
+    // Ricevi i dati inviati dal client e scrivili nel file
+    char buffer[BUFFER_SIZE];
     ssize_t bytes_received;
-    // Continua a ricevere i dati rimanenti, se ce ne sono
-    while ((bytes_received = recv(client_socket, buffer_in, sizeof(buffer_in), 0)) > 0) {
-        printf("'%s'\n",buffer_in);
-        fwrite(buffer_in, 1, bytes_received, fp);
+    while ((bytes_received = recv(client_socket, buffer, sizeof(buffer), 0)) > 0) {
+        fwrite(buffer, 1, bytes_received, fp);
     }
-
+    // Chiudi il file e sblocca il percorso
     fclose(fp);
+
+
+    unlock_path(filename);
+
+    printf("File %s Sbloccato.\n", filename);
     return 0;
 }
 
 // Gestisce la comunicazione con il client
 int handle_client(int client_socket) {
-    char buffer_in[BUFFER_SIZE];
+    char buffer[BUFFER_SIZE];
     // legge il messaggio inviato dal client
-    ssize_t bytes_read = read(client_socket, buffer_in, sizeof(buffer_in) - 1);
+    ssize_t bytes_read = read(client_socket, buffer, sizeof(buffer) - 1);
     if (bytes_read > 0) {
-        buffer_in[bytes_read] = '\0';
-        printf("Messaggio ricevuto dal client: %s\n", buffer_in);
+        buffer[bytes_read] = '\0';
+        printf("Messaggio ricevuto dal client: %s\n", buffer);
     } else {
         close(client_socket);
         return -1;
     }
-    char* command = buffer_in;
-    char* filename = buffer_in+4;
+    char* command = buffer;
+    char* filename = buffer+4;
     remove_crlf(filename);
 
     if (strncmp(command, "LST ", 4) == 0) {

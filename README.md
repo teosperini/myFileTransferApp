@@ -1,6 +1,11 @@
+Per compilare la libreria:
+gcc -c path_semaphore.c -o path_semaphore.o
+
 Per compilare il server e il client usare: (sostituire con gli adeguati path)
-Server: 'gcc -Wall -o /path/to/executable/myFTserver /path/to/project/myFTserver.c -lpthread'
+Server: 'gcc -Wall -o /path/to/executable/myFTserver /path/to/project/myFTserver.c /path/to/library/path_semaphore.o -lpthread'
 Client: 'gcc -Wall -o /path/to/executable/myFTclient /path/to/project/myFTclient.c'
+
+"prova_sem.py" è uno script che mi sono fatto per il test concorrenziale di più thread sulla scrittura dello stesso file
 
 Per eseguire il Client usare:
 myFTclient -w -a server_address -p port  -f local_path/filename_local -o remote_path/filename_remote
