@@ -1,5 +1,5 @@
 Per compilare la libreria:
-gcc -c path_semaphore.c -o path_semaphore.o
+gcc -c path_mutex.c -o path_mutex.o
 
 Per compilare il server e il client usare: (sostituire con gli adeguati path)
 Server: 'gcc -Wall -o /path/to/executable/myFTserver /path/to/project/myFTserver.c /path/to/library/path_semaphore.o -lpthread'

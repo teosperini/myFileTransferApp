@@ -1,6 +1,6 @@
 #include "server_operations.h"
 #include "util.h"
-#include "path_semaphore.h"
+#include "path_mutex.h"
 
 
 /**

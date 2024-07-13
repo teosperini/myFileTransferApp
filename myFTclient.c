@@ -1,6 +1,8 @@
 #include "util.h"
 
-// Funzione per stampare l'uso del programma
+/**
+ * @param prog_name il nome del programma
+ */
 void print_usage(const char *prog_name) {
     fprintf(stderr, "usage:\n");
     fprintf(stderr, "%s -w -a <IP address> -p <port number> -f <local_path/filename_local> [-o <remote_path/filename_remote>]\n", prog_name);
@@ -8,6 +10,14 @@ void print_usage(const char *prog_name) {
     fprintf(stderr, "%s -l -a <IP address> -p <port number> -f <remote_path/>\n", prog_name);
 }
 
+/**
+ * Questa funzione gestice l'invio del comando GET al server e
+ * la relativa ricezione di risposte da parte del server
+ * @param f_path Il path del file remoto
+ * @param o_path Il path del file locale
+ * @param client_socket Il socket del client
+ * @return 0 se non ci sono stati errori, -1 altrimenti
+ */
 int r_command(char *f_path, char *o_path, int client_socket) {
     char request[BUFFER_SIZE];
     // Invio la richiesta get al server
@@ -70,6 +80,14 @@ int r_command(char *f_path, char *o_path, int client_socket) {
     return 0;
 }
 
+/**
+ * Questa funzione gestice l'invio del comando PUT al server e
+ * la relativa ricezione di risposte da parte del server
+ * @param f_path Il path del file locale
+ * @param o_path Il path del file remoto
+ * @param client_socket Il socket del client
+ * @return 0 se non ci sono stati errori, -1 altrimenti
+ */
 int w_command(char *f_path, char *o_path, int client_socket) {
     char request[BUFFER_SIZE];
     // Apertura file locale in lettura
@@ -124,6 +142,13 @@ int w_command(char *f_path, char *o_path, int client_socket) {
     return false;
 }
 
+/**
+ * Questa funzione gestice l'invio del comando LST al server e
+ * la relativa ricezione di risposte da parte del server
+ * @param f_path Il path della directory remota
+ * @param client_socket Il socket del client
+ * @return 0 se non ci sono stati errori, -1 altrimenti
+ */
 int l_command(char **f_path, int client_socket) {
     char request[BUFFER_SIZE];
     bool f_was_null = false;
@@ -137,7 +162,6 @@ int l_command(char **f_path, int client_socket) {
     snprintf(request, sizeof(request), "LST %s\n", *f_path);
     if (send(client_socket, request, strlen(request), 0) < 0) {
         perror("Errore nell'invio della richiesta LS\n ");
-        close(client_socket);
         return -1;
     }
 
@@ -178,6 +202,13 @@ int l_command(char **f_path, int client_socket) {
     return 0;
 }
 
+/**
+ * La funzione principale del client, che viene eseguita ogni volta
+ * che viene inviato un messaggio dal client
+ * @param argc
+ * @param argv
+ * @return 0 se non ci sono stati errori, -1 altrimenti
+ */
 int main(int argc, char *argv[]) {
     int type_w = 0;
     int type_r = 0;
@@ -186,7 +217,6 @@ int main(int argc, char *argv[]) {
     char *port_str = NULL;
     char *f_path = NULL;
     char *o_path = NULL;
-    bool o_was_null = false;
     int opt;
 
     // Analizza le opzioni della linea di comando
@@ -215,41 +245,42 @@ int main(int argc, char *argv[]) {
                 break;
             case 'h':
                 print_usage(argv[0]);
-                return 0;
+                exit(EXIT_SUCCESS);
             default:
                 print_usage(argv[0]);
-                return 1;
+                exit(EXIT_FAILURE);
         }
     }
 
+    // Verifico che siano
     int check_sum = type_w + type_r + type_l;
     if (check_sum != 1) {
         if (check_sum < 1) {
-            fprintf(stderr, "You need one type for the instruction\n");
+            print_usage(argv[0]);
         } else {
-            fprintf(stderr, "Too many types in the instruction\n");
+            print_usage(argv[0]);
         }
         print_usage(argv[0]);
-        return -1;
+        exit(EXIT_FAILURE);
     }
 
     // Verifica che tutte le opzioni necessarie siano state fornite
     if (server_ip == NULL || port_str == NULL || (f_path == NULL && type_l == 0)) {
         fprintf(stderr, "Tutte le opzioni -a, -p, -f sono obbligatorie\n");
         print_usage(argv[0]);
-        return -1;
+        exit(EXIT_FAILURE);
     }
 
     // Controllo di validità dell'indirizzo IP
     if (!is_valid_ip(server_ip)) {
         fprintf(stderr, "L'indirizzo IP '%s' non è valido.\n", server_ip);
-        return -1;
+        exit(EXIT_FAILURE);
     }
 
     // Controllo di validità del numero di porta
     if (!is_valid_port(port_str)) {
         fprintf(stderr, "Il numero di porta '%s' non è valido.\n", port_str);
-        return -1;
+        exit(EXIT_FAILURE);
     }
 
     int port = atoi(port_str);
@@ -259,17 +290,16 @@ int main(int argc, char *argv[]) {
         o_path = malloc(strlen(f_path) + 1);
         if (o_path == NULL) {
             perror("Errore di allocazione memoria");
-            return -1;
+            exit(EXIT_FAILURE);
         }
         strcpy(o_path, f_path);
-        o_was_null = true;
     }
 
     // Creazione del socket per il client
     int client_socket;
     if ((client_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("Errore nella creazione del socket");
-        return -1;
+        exit(EXIT_FAILURE);
     }
 
     struct sockaddr_in server_addr;
@@ -281,35 +311,25 @@ int main(int argc, char *argv[]) {
     // Connessione al server
     if (connect(client_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
         perror("Errore nella connessione al server");
-        close(client_socket);
-        return -1;
+        exit(EXIT_FAILURE);
     }
-
-    int result = 0;
 
     if (type_r) {
         // Operazione di lettura (get)
         if (r_command(f_path, o_path, client_socket) < 0) {
-            result = -1;
+            exit(EXIT_FAILURE);
         }
     } else if (type_w) {
         // Operazione di scrittura (put)
         if (w_command(f_path, o_path, client_socket) < 0) {
-            result = -1;
+            exit(EXIT_FAILURE);
         }
     } else if (type_l) {
         // Operazione di lista (list)
         if (l_command(&f_path, client_socket) < 0) {
-            result = -1;
+            exit(EXIT_FAILURE);
         }
     }
 
-    // Chiusura del socket
-    close(client_socket);
-
-    // Libera la memoria allocata per o_path se era stata allocata
-    if (o_was_null) {
-        free(o_path);
-    }
-    return result;
+    exit(EXIT_SUCCESS);
 }

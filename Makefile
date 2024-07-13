@@ -5,7 +5,7 @@ CC = gcc
 CFLAGS = -Wall
 
 # File di output
-LIBRARY_OBJS = path_semaphore.o util.o server_operations.o
+LIBRARY_OBJS = path_mutex.o util.o server_operations.o
 CLIENT = myFTclient
 SERVER = myFTserver
 ALL = all
@@ -13,8 +13,8 @@ ALL = all
 # Target di compilazione
 all: $(CLIENT) $(SERVER)
 
-path_semaphore.o: path_semaphore.c path_semaphore.h
-	$(CC) -c path_semaphore.c -o path_semaphore.o
+path_mutex.o: path_mutex.c path_mutex.h
+	$(CC) -c path_mutex.c -o path_mutex.o
 
 util.o: util.c util.h
 	$(CC) -c util.c -o util.o

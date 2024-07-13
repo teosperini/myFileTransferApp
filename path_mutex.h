@@ -1,5 +1,5 @@
-#ifndef PATH_SEMAPHORE_H
-#define PATH_SEMAPHORE_H
+#ifndef PATH_MUTEX_H
+#define PATH_MUTEX_H
 
 #include <pthread.h>
 
@@ -21,5 +21,4 @@ void lock(const char *path);
  */
 void unlock(const char *path);
 
-
-#endif /* PATH_SEMAPHORE_H */
+#endif //PATH_MUTEX_H

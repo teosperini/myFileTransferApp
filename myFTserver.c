@@ -1,5 +1,5 @@
 #include "util.h"
-#include "path_semaphore.h"
+#include "path_mutex.h"
 #include "server_operations.h"
 
 // Il descrittore del socket
@@ -22,8 +22,7 @@ void handle_sigint(int sig) {
     if (shutdown(server_socket, SHUT_RDWR) == -1) {
         perror("Errore nella chiusura del socket con shutdown");
     }
-    close(server_socket);
-    exit(0);
+    exit(EXIT_SUCCESS);
 }
 
 /**
@@ -31,9 +30,8 @@ void handle_sigint(int sig) {
  * smistandola tra le varie funzioni di gestione dei comandi in base ai
  * primi 4 caratteri del buffer in arrivo
  * @param client_socket il socket dal quale proviene la richiesta
- * @return 0 se non ci sono stati errori, -1 altrimenti
  */
-int handle_client(int client_socket) {
+void handle_client(int client_socket) {
     char buffer_in[BUFFER_SIZE];
     // legge il messaggio inviato dal client
     ssize_t bytes_read = read(client_socket, buffer_in, sizeof(buffer_in) - 1);
@@ -41,12 +39,11 @@ int handle_client(int client_socket) {
         buffer_in[bytes_read] = '\0';
         printf("Messaggio ricevuto dal client: %s\n", buffer_in);
     } else {
-        close(client_socket);
-        return -1;
+        return;
     }
     char* command = buffer_in;
     char* filename = buffer_in+4;
-    remove_crlf(filename); //TODO va usato anche nel client?
+    remove_crlf(filename);
 
     if (strncmp(command, "LST ", 4) == 0) {
         handle_ls(client_socket, filename);
@@ -55,10 +52,6 @@ int handle_client(int client_socket) {
     } else if (strncmp(command, "PUT ", 4) == 0) {
         handle_put(client_socket, filename);
     }
-
-    // chiudi il socket
-    close(client_socket);
-    return 0;
 }
 
 /**
@@ -77,6 +70,9 @@ void *client_thread(void *arg) {
     free(arg);
 
     handle_client(client_socket);
+
+    // chiudi il socket
+    close(client_socket);
     return NULL;
 }
 
@@ -85,7 +81,7 @@ void *client_thread(void *arg) {
  * e viene messo in ascolto
  * @param argc 
  * @param argv 
- * @return 0 se non ci sono stati errori, -1 altrimenti
+ * @return EXIT_SUCCESS se non ci sono stati errori, EXIT_FAILURE altrimenti
  */
 int main(int argc, char *argv[]) {
     int opt;
@@ -204,8 +200,4 @@ int main(int argc, char *argv[]) {
         // Detach del thread per permettere la terminazione automatica
         pthread_detach(tid);
     }
-    
-    // Chiusura del socket del server (non raggiungibile nel codice attuale)
-    close(server_socket);
-    return 0;
 }
