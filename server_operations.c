@@ -2,17 +2,23 @@
 #include "util.h"
 #include "path_semaphore.h"
 
-extern int server_socket;
 
-int handle_ls(int client_socket, char* filename) {
-    if(!check_absolute_path(filename)) {
+/**
+ * @brief Questa funzione gestisce la risposta del server in caso
+ * dell'arrivo di una richiesta LIST da parte di un client
+ * @param client_socket il socket dal quale proviene la richiesta
+ * @param dirname il path e il nome della cartella della quale inviare il contenuto
+ * @return 0 se non ci sono stati errori, -1 altrimenti
+ */
+int handle_ls(int client_socket, char* dirname) {
+    if(!check_absolute_path(dirname)) {
         send(client_socket, "ABSOLUTE_PATH_NOT_ALLOWED", 25, 0);
         close(client_socket);
         return -1;
     }
 
     char path[BUFFER_SIZE] = "ls ";
-    strcat(path, filename);
+    strcat(path, dirname);
 
     FILE *fp = popen(path, "r");
     if (fp == NULL) {
@@ -36,6 +42,13 @@ int handle_ls(int client_socket, char* filename) {
     return 0;
 }
 
+/**
+ * @brief Questa funzione gestisce la risposta del server in caso
+ * dell'arrivo di una richiesta GET da parte di un client
+ * @param client_socket il socket dal quale proviene la richiesta
+ * @param filename il path e il nome del file da inviare al client
+ * @return 0 se non ci sono stati errori, -1 altrimenti
+ */
 int handle_get(int client_socket, char *filename) {
     if(!check_absolute_path(filename)) {
         send(client_socket, "ABSOLUTE_PATH_NOT_ALLOWED", 25, 0);
@@ -87,6 +100,13 @@ int handle_get(int client_socket, char *filename) {
     return 0;
 }
 
+/**
+ * @brief Questa funzione gestisce la risposta del server in caso
+ * dell'arrivo di una richiesta PUT da parte di un client
+ * @param client_socket il socket dal quale proviene la richiesta
+ * @param filename il path e il nome del file da salvare sul server
+ * @return 0 se non ci sono stati errori, -1 altrimenti
+ */
 int handle_put(int client_socket, char* filename) {
     if (!check_absolute_path(filename)) {
         send(client_socket, "ABSOLUTE_PATH_NOT_ALLOWED", 25, 0);
@@ -130,13 +150,4 @@ int handle_put(int client_socket, char* filename) {
     unlock(filename);
     printf("File %s sbloccato.\n", filename);
     return 0;
-}
-
-void handle_sigint(int sig) {
-    printf("Interruzione ricevuta, chiudo il socket ...\n");
-    if (shutdown(server_socket, SHUT_RDWR) == -1) {
-        perror("Errore nella chiusura del socket con shutdown");
-    }
-    close(server_socket);
-    exit(0);
 }
