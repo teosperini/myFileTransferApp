@@ -1,6 +1,8 @@
 /myFTclient
 /myFTserver
-/path_semaphore.o
+/path_mutex.o
+/util.o
+/server_operations.o
 /.idea/editor.xml
 /.idea/modules.xml
 /.idea/projectMyFileTransferApp.iml

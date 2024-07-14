@@ -123,6 +123,7 @@ int main(int argc, char *argv[]) {
 
     // Viene cambiata la directory del server a quella specificata
     // durante l'avvio
+    create_directories(directory);
     if (chdir(directory) < 0) {
         perror("Errore nel cambio della directory");
         exit(EXIT_FAILURE);
